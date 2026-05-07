@@ -47,6 +47,8 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: local-dev-secret-change-me
       JWT_EXPIRES_IN: 7d
+      CAMOFOX_URL: http://camofox:9377
+      CAMOFOX_ACCESS_KEY: ${CAMOFOX_ACCESS_KEY:-dev-camofox-key-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
     ports:
@@ -75,6 +77,8 @@ services:
       DB_NAME: nexoria
       REDIS_URL: redis://redis:6379
       JWT_SECRET: local-dev-secret-change-me
+      CAMOFOX_URL: http://camofox:9377
+      CAMOFOX_ACCESS_KEY: ${CAMOFOX_ACCESS_KEY:-dev-camofox-key-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
     depends_on:
@@ -104,6 +108,39 @@ services:
     # Replace with actual TypeORM CLI command when migrations exist
     profiles: ["migrate"]
 
+  camofox:
+    image: ghcr.io/jo-inc/camofox-browser:latest
+    container_name: nexoria_camofox
+    environment:
+      CAMOFOX_PORT: 9377
+      CAMOFOX_ACCESS_KEY: ${CAMOFOX_ACCESS_KEY:-dev-camofox-key-change-me}
+      CAMOFOX_CRASH_REPORT_ENABLED: "false"
+      MAX_SESSIONS: 50
+      MAX_TABS_PER_SESSION: 5
+      SESSION_TIMEOUT_MS: 1800000
+      BROWSER_IDLE_TIMEOUT_MS: 300000
+      TAB_INACTIVITY_MS: 300000
+      MAX_OLD_SPACE_SIZE: 512
+    volumes:
+      - camofox_profiles:/home/node/.camofox/profiles
+      - camofox_traces:/home/node/.camofox/traces
+    networks:
+      - nexoria
+    # No ports exposed to host — only internal from api/worker containers
+    # Add proxy envs here when you have them:
+    # PROXY_STRATEGY: backconnect
+    # PROXY_BACKCONNECT_HOST: gate.provider.com
+    # PROXY_BACKCONNECT_PORT: 7000
+    # PROXY_USERNAME: ${PROXY_USERNAME}
+    # PROXY_PASSWORD: ${PROXY_PASSWORD}
+    # restart: unless-stopped
+
+networks:
+  nexoria:
+    driver: bridge
+
 volumes:
   postgres_data:
   redis_data:
+  camofox_profiles:
+  camofox_traces:

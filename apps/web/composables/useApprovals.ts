@@ -1,27 +1,38 @@
-import type { Approval, ApprovalDecision } from '~/types'
-
 export function useApprovals () {
-  const approvals = ref<Approval[]>([])
+  const approvals = ref<any[]>([])
   const isLoading = ref(false)
 
   async function fetchApprovals (): Promise<void> {
+    const ws = useCookie('workspace_id').value
+    if (!ws) return
     isLoading.value = true
-    const res = await useApi<{ approvals: Approval[] }>('/api/approvals')
-    approvals.value = res.approvals || []
-    isLoading.value = false
+    try {
+      const res = await useApi<{ approvals: any[] }>(`/workspaces/${ws}/approvals`)
+      approvals.value = res.approvals || []
+    } finally {
+      isLoading.value = false
+    }
   }
 
-  async function submitDecision (id: string, outcome: string, reason?: string): Promise<Approval> {
-    const res = await useApi<{ approval: Approval }>(`/api/approvals/${id}/decide`, {
+  async function approve (id: string, decision?: string): Promise<void> {
+    const ws = useCookie('workspace_id').value
+    if (!ws) return
+    await useApi(`/workspaces/${ws}/approvals/${id}/approve`, {
       method: 'POST',
-      body: { outcome, reason }
+      body: { decision }
     })
-    const idx = approvals.value.findIndex(a => a.id === id)
-    if (idx !== -1) approvals.value[idx] = res.approval
-    return res.approval
+    await fetchApprovals()
   }
 
-  const pendingApprovals = computed(() => approvals.value.filter(a => a.status === 'pending'))
+  async function reject (id: string, reason?: string): Promise<void> {
+    const ws = useCookie('workspace_id').value
+    if (!ws) return
+    await useApi(`/workspaces/${ws}/approvals/${id}/reject`, {
+      method: 'POST',
+      body: { reason }
+    })
+    await fetchApprovals()
+  }
 
-  return { approvals, pendingApprovals, isLoading, fetchApprovals, submitDecision }
+  return { approvals, isLoading, fetchApprovals, approve, reject }
 }

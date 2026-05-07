@@ -20,8 +20,10 @@ export class ToolRegistryService {
   }
 
   listForContext(ctx: ToolContext): AgentTool[] {
-    const enabled = new Set(ctx.agentProfile.enabledTools ?? []);
-    return Array.from(this.tools.values()).filter((t) => enabled.has(t.name));
+    const enabled = ctx.agentProfile.enabledTools;
+    if (!enabled || !enabled.length) return Array.from(this.tools.values());
+    const whitelist = new Set(enabled);
+    return Array.from(this.tools.values()).filter((t) => whitelist.has(t.name));
   }
 
   private registerBuiltIns(): void {
