@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AgentTool, ToolContext } from '../../../shared/interfaces/agent.interfaces';
 import { z } from 'zod';
+import { openWebpageTool } from '../tools/open-webpage.tool';
 
 @Injectable()
 export class ToolRegistryService {
@@ -95,5 +96,7 @@ export class ToolRegistryService {
         return { success: true, task: { ...args, workspaceId: ctx.workspaceId } };
       },
     });
+
+    this.register(openWebpageTool);
   }
 }
