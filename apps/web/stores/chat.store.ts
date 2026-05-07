@@ -4,58 +4,71 @@ import type { ChatMessage } from '~/types'
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const isLoading = ref(false)
+  const error = ref<string | null>(null)
 
-  function addMessage (msg: ChatMessage): void {
-    messages.value.push(msg)
+  async function sendMessage (content: string, agentProfileId: string = 'orchestrator'): Promise<void> {
+    const workspaceId = useCookie('workspace_id').value
+    if (!workspaceId) throw new Error('No workspace selected')
+
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+      timestamp: new Date().toISOString()
+    }
+    messages.value.push(userMsg)
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const res = await useApi<{ message: string; task?: any; status: string }>(
+        `/workspaces/${workspaceId}/agent-runtime/run/${agentProfileId}`,
+        {
+          method: 'POST',
+          body: { message: content }
+        }
+      )
+
+      const assistantMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: res.message || 'Task dispatched.',
+        agentProfileId,
+        timestamp: new Date().toISOString()
+      }
+      messages.value.push(assistantMsg)
+    } catch (e: any) {
+      error.value = e?.message || 'Failed to get response'
+      messages.value.push({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: `Error: ${error.value}`,
+        timestamp: new Date().toISOString()
+      })
+    } finally {
+      isLoading.value = false
+    }
   }
 
-  function setLoading (v: boolean): void {
-    isLoading.value = v
-  }
-
-  function clear (): void {
+  function clearMessages (): void {
     messages.value = []
   }
 
-  async function sendMessage (content: string, agentProfileId?: string, workspaceId?: string): Promise<void> {
-    const userMsg: ChatMessage = {
-      id: Math.random().toString(36).slice(2),
-      role: 'user',
+  function addSystemMessage (content: string): void {
+    messages.value.push({
+      id: crypto.randomUUID(),
+      role: 'system',
       content,
-      agentProfileId: agentProfileId || null,
       timestamp: new Date().toISOString()
-    }
-    addMessage(userMsg)
-    setLoading(true)
-    try {
-      const endpoint = agentProfileId
-        ? `/agent-runtime/run/${agentProfileId}`
-        : '/agent-runtime/run/orchestrator'
-      const res = await useApi<{ result: { finalOutput: string } }>(endpoint, {
-        method: 'POST',
-        body: { message: content }
-      })
-      const reply: ChatMessage = {
-        id: Math.random().toString(36).slice(2),
-        role: 'assistant',
-        content: res.result?.finalOutput || 'Done.',
-        agentProfileId: agentProfileId || null,
-        timestamp: new Date().toISOString()
-      }
-      addMessage(reply)
-    } catch (err: any) {
-      const errMsg: ChatMessage = {
-        id: Math.random().toString(36).slice(2),
-        role: 'assistant',
-        content: `Error: ${err?.data?.message || err.message || 'Something went wrong'}`,
-        agentProfileId: null,
-        timestamp: new Date().toISOString()
-      }
-      addMessage(errMsg)
-    } finally {
-      setLoading(false)
-    }
+    })
   }
 
-  return { messages, isLoading, addMessage, setLoading, clear, sendMessage }
+  return {
+    messages,
+    isLoading,
+    error,
+    sendMessage,
+    clearMessages,
+    addSystemMessage
+  }
 })
