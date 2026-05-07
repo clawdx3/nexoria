@@ -109,7 +109,7 @@
           <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
             <div>
               <h2 class="text-sm font-semibold text-slate-950 dark:text-white">Task queue</h2>
-              <p class="text-xs text-slate-500">{{ taskRows.length }} active items</p>
+              <p class="text-xs text-slate-500">{{ activeTasks.length }} active / {{ allTasks.length }} total</p>
             </div>
             <UButton size="xs" variant="ghost" color="gray" @click="navigateTo('/tasks')">View all</UButton>
           </div>
@@ -267,7 +267,7 @@ const activeTasks = computed(() => (
 ))
 
 const taskRows = computed(() => {
-  return activeTasks.value.slice(0, 5).map((task: Task) => ({
+  return allTasks.value.slice(0, 5).map((task: Task) => ({
     id: task.id,
     title: task.title,
     owner: task.metadata?.agentName || 'Team Lead',
