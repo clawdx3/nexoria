@@ -1,39 +1,55 @@
-import type { AgentProfile } from '~/types'
-
 export function useAgent () {
-  const agents = ref<AgentProfile[]>([])
+  const agents = ref<any[]>([])
+  const currentAgent = ref<any | null>(null)
   const isLoading = ref(false)
 
   async function fetchAgents (): Promise<void> {
     isLoading.value = true
-    const res = await useApi<{ agentProfiles: AgentProfile[] }>('/api/agent-profiles')
-    agents.value = res.agentProfiles || []
-    isLoading.value = false
+    try {
+      const ws = useCookie('workspace_id').value
+      if (!ws) return
+      const res = await useApi<any[]>(`/workspaces/${ws}/agent-profiles`)
+      agents.value = res || []
+    } finally {
+      isLoading.value = false
+    }
   }
 
-  async function createAgent (payload: Partial<AgentProfile>): Promise<AgentProfile> {
-    const res = await useApi<{ agentProfile: AgentProfile }>('/api/agent-profiles', {
+  async function fetchAgent (id: string): Promise<void> {
+    const ws = useCookie('workspace_id').value
+    if (!ws) return
+    currentAgent.value = await useApi<any>(`/workspaces/${ws}/agent-profiles/${id}`)
+  }
+
+  async function createAgent (payload: any): Promise<any> {
+    const ws = useCookie('workspace_id').value
+    if (!ws) throw new Error('No workspace selected')
+    const res = await useApi<any>(`/workspaces/${ws}/agent-profiles`, {
       method: 'POST',
       body: payload
     })
-    agents.value.push(res.agentProfile)
-    return res.agentProfile
+    agents.value.push(res)
+    return res
   }
 
-  async function updateAgent (id: string, payload: Partial<AgentProfile>): Promise<AgentProfile> {
-    const res = await useApi<{ agentProfile: AgentProfile }>(`/api/agent-profiles/${id}`, {
+  async function updateAgent (id: string, payload: any): Promise<any> {
+    const ws = useCookie('workspace_id').value
+    if (!ws) throw new Error('No workspace selected')
+    const res = await useApi<any>(`/workspaces/${ws}/agent-profiles/${id}`, {
       method: 'PATCH',
       body: payload
     })
-    const idx = agents.value.findIndex(a => a.id === id)
-    if (idx !== -1) agents.value[idx] = res.agentProfile
-    return res.agentProfile
+    const idx = agents.value.findIndex((a: any) => a.id === id)
+    if (idx !== -1) agents.value[idx] = res
+    return res
   }
 
   async function deleteAgent (id: string): Promise<void> {
-    await useApi(`/api/agent-profiles/${id}`, { method: 'DELETE' })
-    agents.value = agents.value.filter(a => a.id !== id)
+    const ws = useCookie('workspace_id').value
+    if (!ws) throw new Error('No workspace selected')
+    await useApi(`/workspaces/${ws}/agent-profiles/${id}`, { method: 'DELETE' })
+    agents.value = agents.value.filter((a: any) => a.id !== id)
   }
 
-  return { agents, isLoading, fetchAgents, createAgent, updateAgent, deleteAgent }
+  return { agents, currentAgent, isLoading, fetchAgents, fetchAgent, createAgent, updateAgent, deleteAgent }
 }

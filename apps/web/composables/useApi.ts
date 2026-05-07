@@ -32,8 +32,23 @@ export async function useApi<T> (
     return await $fetch<T>(url, options)
   } catch (err: any) {
     if (err?.response?.status === 401) {
+      useCookie('access_token').value = null
       navigateTo('/login')
     }
     throw err
   }
+}
+
+export async function useApiRaw (
+  endpoint: string,
+  opts?: NitroFetchOptions<NitroFetchRequest>
+): Promise<Response> {
+  const url = `${apiBase()}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
+  return $fetch.raw(url, {
+    ...opts,
+    headers: {
+      ...getHeaders(),
+      ...(opts?.headers || {})
+    } as any
+  })
 }
