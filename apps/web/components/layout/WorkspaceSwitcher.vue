@@ -6,7 +6,7 @@
       </span>
       <span class="hidden min-w-0 md:block">
         <span class="block max-w-[160px] truncate text-sm font-semibold leading-4">
-          {{ currentWorkspace?.name || 'Acme Consulting' }}
+          {{ currentWorkspace?.name || 'My Workspace' }}
         </span>
         <span class="block text-left text-[11px] leading-3 text-slate-500">Workspace</span>
       </span>

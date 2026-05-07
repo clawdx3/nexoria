@@ -87,7 +87,7 @@ function onSend (content: string) {
 
 function onSwitchAgent (id: string | null) {
   selectedAgentId.value = id
-  chatStore.clear()
+  chatStore.clearMessages()
 }
 
 watch(() => chatStore.messages.length, async () => {

@@ -113,7 +113,10 @@
             </div>
             <UButton size="xs" variant="ghost" color="gray" @click="navigateTo('/tasks')">View all</UButton>
           </div>
-          <div class="divide-y divide-slate-100 dark:divide-slate-800">
+          <div v-if="taskRows.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
+            No tasks in this workspace yet.
+          </div>
+          <div v-else class="divide-y divide-slate-100 dark:divide-slate-800">
             <div v-for="task in taskRows" :key="task.id" class="px-4 py-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
@@ -140,7 +143,10 @@
             </div>
             <UButton size="xs" variant="ghost" color="gray" @click="navigateTo('/approvals')">Review</UButton>
           </div>
-          <div class="divide-y divide-slate-100 dark:divide-slate-800">
+          <div v-if="approvalRows.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
+            No approvals are waiting.
+          </div>
+          <div v-else class="divide-y divide-slate-100 dark:divide-slate-800">
             <div v-for="approval in approvalRows" :key="approval.id" class="px-4 py-3">
               <div class="flex items-start gap-3">
                 <span :class="['mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', approval.iconBg]">
@@ -214,17 +220,14 @@
 <script setup lang="ts">
 import {
   Activity,
-  AlertTriangle,
   Bot,
   Brain,
   CheckCircle2,
   Command,
   FileCheck2,
   Gauge,
-  MessageSquareText,
   Send,
-  ShieldCheck,
-  Wrench
+  ShieldCheck
 } from 'lucide-vue-next'
 import type { Task } from '~/types'
 
@@ -232,7 +235,7 @@ definePageMeta({ middleware: 'auth' })
 
 const chatStore = useChatStore()
 const { agents, fetchAgents } = useAgent()
-const { tasks, fetchTasks } = useTasks()
+const { allTasks, fetchTasks } = useTasks()
 const { approvals, fetchApprovals } = useApprovals()
 
 const selectedAgentId = ref<string | null>(null)
@@ -254,13 +257,17 @@ const starterPrompts = [
 
 const metrics = computed(() => [
   { label: 'Active agents', value: agentRows.value.length, delta: '+2', tone: 'text-emerald-600 dark:text-emerald-400' },
-  { label: 'Open tasks', value: taskRows.value.length, delta: 'Live', tone: 'text-cyan-600 dark:text-cyan-400' },
+  { label: 'Open tasks', value: activeTasks.value.length, delta: 'Live', tone: 'text-cyan-600 dark:text-cyan-400' },
   { label: 'Approvals', value: approvalRows.value.length, delta: 'Needs review', tone: 'text-amber-600 dark:text-amber-400' },
   { label: 'Runtime health', value: '98%', delta: 'Stable', tone: 'text-emerald-600 dark:text-emerald-400' }
 ])
 
+const activeTasks = computed(() => (
+  allTasks.value.filter((task: Task) => !['done', 'cancelled'].includes(task.status))
+))
+
 const taskRows = computed(() => {
-  const realTasks = tasks.value.slice(0, 5).map((task: Task) => ({
+  return activeTasks.value.slice(0, 5).map((task: Task) => ({
     id: task.id,
     title: task.title,
     owner: task.metadata?.agentName || 'Team Lead',
@@ -268,29 +275,16 @@ const taskRows = computed(() => {
     status: task.status,
     statusLabel: task.status.replace('_', ' ')
   }))
-
-  return realTasks.length > 0 ? realTasks : [
-    { id: 'demo-task-1', title: 'Review pending content approvals', owner: 'Operations Agent', due: 'Today', status: 'pending', statusLabel: 'pending' },
-    { id: 'demo-task-2', title: 'Prepare onboarding workflow draft', owner: 'Research Agent', due: 'Tomorrow', status: 'in_progress', statusLabel: 'in progress' },
-    { id: 'demo-task-3', title: 'Audit connected integrations', owner: 'Systems Agent', due: 'Friday', status: 'pending', statusLabel: 'pending' },
-    { id: 'demo-task-4', title: 'Update workspace memory summary', owner: 'Memory Agent', due: 'This week', status: 'done', statusLabel: 'done' }
-  ]
 })
 
 const approvalRows = computed(() => {
-  const realApprovals = approvals.value.slice(0, 4).map((approval: any) => ({
+  return approvals.value.filter((approval: any) => approval.status === 'pending').slice(0, 4).map((approval: any) => ({
     id: approval.id,
     title: approval.title,
     meta: approval.description || approval.type || 'Approval request',
     icon: FileCheck2,
     iconBg: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
   }))
-
-  return realApprovals.length > 0 ? realApprovals : [
-    { id: 'demo-approval-1', title: 'Publish customer reply draft', meta: 'Support workflow · high visibility', icon: MessageSquareText, iconBg: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' },
-    { id: 'demo-approval-2', title: 'Run integration cleanup task', meta: 'Systems Agent · medium risk', icon: Wrench, iconBg: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300' },
-    { id: 'demo-approval-3', title: 'Approve memory promotion', meta: 'Long-term memory · confidence 91%', icon: Brain, iconBg: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' }
-  ]
 })
 
 const agentRows = computed(() => {

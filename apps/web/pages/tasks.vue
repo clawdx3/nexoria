@@ -70,7 +70,7 @@ definePageMeta({ middleware: 'auth' })
 import { Plus, CheckCircle } from 'lucide-vue-next'
 import type { Task } from '~/types'
 
-const { tasks, isLoading, fetchTasks, createTask, filter, filteredTasks } = useTasks()
+const { tasks, isLoading, fetchTasks, createTask, filter } = useTasks()
 const { fetchAgents } = useAgent()
 onMounted(() => { void fetchTasks(); void fetchAgents() })
 
@@ -87,7 +87,7 @@ const tabs = [
 
 const grouped = computed(() => {
   const map: Record<string, Task[]> = {}
-  for (const t of filteredTasks.value) {
+  for (const t of tasks.value) {
     const key = (t.metadata?.missionName as string) || '_'
     if (!map[key]) map[key] = []
     map[key].push(t)

@@ -3,7 +3,7 @@ export function useWorkspace () {
   const members = ref<any[]>([])
 
   async function fetchMembers (): Promise<void> {
-    const workspaceId = store.currentWorkspaceId || useCookie('workspace_id').value
+    const workspaceId = await store.ensureWorkspace()
     if (!workspaceId) {
       members.value = []
       return

@@ -1,6 +1,7 @@
 export function useApprovals () {
   const approvals = ref<any[]>([])
   const isLoading = ref(false)
+  const pendingApprovals = computed(() => approvals.value.filter(approval => approval.status === 'pending'))
 
   async function fetchApprovals (): Promise<void> {
     const ws = await useWorkspaceStore().ensureWorkspace()
@@ -34,5 +35,5 @@ export function useApprovals () {
     await fetchApprovals()
   }
 
-  return { approvals, isLoading, fetchApprovals, approve, reject }
+  return { approvals, pendingApprovals, isLoading, fetchApprovals, approve, reject }
 }
