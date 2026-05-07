@@ -1,0 +1,1 @@
+/* Tailwind CSS layers handled by Nuxt UI / Tailwind automatically */
