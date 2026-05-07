@@ -6,7 +6,7 @@ export function useAgent () {
   async function fetchAgents (): Promise<void> {
     isLoading.value = true
     try {
-      const ws = useCookie('workspace_id').value
+      const ws = await useWorkspaceStore().ensureWorkspace()
       if (!ws) return
       const res = await useApi<any[]>(`/workspaces/${ws}/agent-profiles`)
       agents.value = res || []
@@ -16,13 +16,13 @@ export function useAgent () {
   }
 
   async function fetchAgent (id: string): Promise<void> {
-    const ws = useCookie('workspace_id').value
+    const ws = await useWorkspaceStore().ensureWorkspace()
     if (!ws) return
     currentAgent.value = await useApi<any>(`/workspaces/${ws}/agent-profiles/${id}`)
   }
 
   async function createAgent (payload: any): Promise<any> {
-    const ws = useCookie('workspace_id').value
+    const ws = await useWorkspaceStore().ensureWorkspace()
     if (!ws) throw new Error('No workspace selected')
     const res = await useApi<any>(`/workspaces/${ws}/agent-profiles`, {
       method: 'POST',
@@ -33,7 +33,7 @@ export function useAgent () {
   }
 
   async function updateAgent (id: string, payload: any): Promise<any> {
-    const ws = useCookie('workspace_id').value
+    const ws = await useWorkspaceStore().ensureWorkspace()
     if (!ws) throw new Error('No workspace selected')
     const res = await useApi<any>(`/workspaces/${ws}/agent-profiles/${id}`, {
       method: 'PATCH',
@@ -45,7 +45,7 @@ export function useAgent () {
   }
 
   async function deleteAgent (id: string): Promise<void> {
-    const ws = useCookie('workspace_id').value
+    const ws = await useWorkspaceStore().ensureWorkspace()
     if (!ws) throw new Error('No workspace selected')
     await useApi(`/workspaces/${ws}/agent-profiles/${id}`, { method: 'DELETE' })
     agents.value = agents.value.filter((a: any) => a.id !== id)

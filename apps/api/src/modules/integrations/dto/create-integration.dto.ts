@@ -1,10 +1,11 @@
 import { IsString, IsOptional, IsEnum, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IntegrationStatus, IntegrationType } from '../../../database/entities/integration.entity';
 
 export class CreateIntegrationDto {
   @ApiProperty({ enum: ['facebook', 'instagram', 'shopify', 'woocommerce', 'mailchimp', 'stripe', 'custom'] })
   @IsEnum(['facebook', 'instagram', 'shopify', 'woocommerce', 'mailchimp', 'stripe', 'custom'])
-  type: string;
+  type: IntegrationType;
 
   @ApiProperty({ example: 'Facebook Page' })
   @IsString()
@@ -30,7 +31,7 @@ export class UpdateIntegrationDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsEnum(['connected', 'disconnected', 'error', 'refreshing'])
-  status?: string;
+  status?: IntegrationStatus;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -57,7 +58,7 @@ export class IntegrationResponseDto {
   status: string;
 
   @ApiProperty()
-  lastSyncedAt: Date;
+  lastSyncedAt: Date | null;
 
   @ApiProperty()
   createdAt: Date;

@@ -56,17 +56,28 @@ export class ApprovalsService {
     else if (dto.outcome === 'request_changes') newStatus = 'pending';
     else if (dto.outcome === 'escalate') newStatus = 'escalated';
 
-    await this.repo.update(approvalId, { status: newStatus, requestedChanges: dto.outcome === 'request_changes' ? { reason: dto.reason } : undefined });
+    const update: Partial<Approval> = { status: newStatus };
+    if (dto.outcome === 'request_changes') {
+      update.requestedChanges = { reason: dto.reason };
+    }
+    await this.repo.update(approvalId, update);
     return this.findOne(approvalId);
   }
 
   private toDto(a: Approval): ApprovalResponseDto {
     return {
       id: a.id,
+      workspaceId: a.workspaceId,
       type: a.type,
       status: a.status,
       title: a.title,
+      description: a.description,
+      taskId: a.taskId,
+      missionId: a.missionId,
+      draftId: a.draftId,
+      metadata: a.metadata ?? {},
       createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
     };
   }
 }

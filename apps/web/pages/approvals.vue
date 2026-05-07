@@ -10,7 +10,7 @@
       </div>
     </div>
     <div class="flex-1 overflow-auto p-6">
-      <LoadingSpinner v-if="isLoading" />
+      <CommonLoadingSpinner v-if="isLoading" />
       <div v-else-if="pendingApprovals.length === 0">
         <EmptyState :icon="CheckCircle" title="All caught up"
           description="No pending approvals right now."

@@ -40,10 +40,7 @@ import {
   Bot,
   Clock,
   AlertTriangle,
-  MoreHorizontal,
-  CheckCircle,
-  XCircle,
-  PauseCircle
+  MoreHorizontal
 } from 'lucide-vue-next'
 import type { Task } from '~/types'
 
@@ -77,24 +74,20 @@ const actionItems = computed(() => [
   [
     {
       label: 'Mark done',
-      icon: CheckCircle,
       click: () => emit('update', props.task.id, { status: 'done' })
     },
     {
       label: 'Pause',
-      icon: PauseCircle,
       click: () => emit('update', props.task.id, { status: 'pending' })
     },
     {
       label: 'Cancel',
-      icon: XCircle,
       click: () => emit('update', props.task.id, { status: 'cancelled' })
     }
   ],
   [
     {
       label: 'Delete',
-      icon: XCircle,
       click: () => emit('delete', props.task.id)
     }
   ]

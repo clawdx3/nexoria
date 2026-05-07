@@ -33,6 +33,7 @@ export async function useApi<T> (
   } catch (err: any) {
     if (err?.response?.status === 401) {
       useCookie('access_token').value = null
+      useCookie('nx_auth').value = null
       navigateTo('/login')
     }
     throw err

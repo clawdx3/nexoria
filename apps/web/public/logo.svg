@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Nexoria">
+  <rect width="48" height="48" rx="10" fill="#0f172a"/>
+  <path d="M13 34V14h4.8l12.4 13.2V14H35v20h-4.8L17.8 20.8V34H13Z" fill="#f8fafc"/>
+  <path d="M14 14h20v4H14z" fill="#22d3ee"/>
+  <path d="M14 30h20v4H14z" fill="#6366f1"/>
+</svg>

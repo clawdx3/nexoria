@@ -1,46 +1,47 @@
 export function useAuth () {
   const store = useAuthStore()
 
+  function setSession (accessToken: string, user: any): void {
+    useCookie('access_token', { sameSite: 'lax', maxAge: 60 * 60 * 24 * 7 }).value = accessToken
+    useCookie('nx_auth').value = null
+    store.user = user
+  }
+
   async function login (payload: { email: string, password: string }): Promise<void> {
     const res = await useApi<{ accessToken: string, user: any }>('/auth/login', {
       method: 'POST',
       body: payload
     })
-    useCookie('access_token', { sameSite: 'lax', maxAge: 60 * 60 * 24 * 7 }).value = res.accessToken
-    store.user.value = res.user
-    store.isAuthenticated.value = true
+    setSession(res.accessToken, res.user)
   }
 
   async function register (payload: { email: string, password: string, firstName: string, lastName: string }): Promise<void> {
-    const res = await useApi<{ accessToken: string, user: any }>('/auth/register', {
+    await useApi('/auth/register', {
       method: 'POST',
       body: payload
     })
-    useCookie('access_token', { sameSite: 'lax', maxAge: 60 * 60 * 24 * 7 }).value = res.accessToken
-    store.user.value = res.user
-    store.isAuthenticated.value = true
+    await login({ email: payload.email, password: payload.password })
   }
 
   function logout (): void {
     useCookie('access_token').value = null
-    store.user.value = null
-    store.isAuthenticated.value = false
+    useCookie('nx_auth').value = null
+    store.user = null
     navigateTo('/login')
   }
 
   async function fetchMe (): Promise<void> {
     try {
-      store.user.value = await useApi<any>('/auth/me')
-      store.isAuthenticated.value = true
+      store.user = await useApi<any>('/auth/me')
     } catch {
-      store.user.value = null
-      store.isAuthenticated.value = false
+      useCookie('access_token').value = null
+      store.user = null
     }
   }
 
   return {
-    user: computed(() => store.user.value),
-    isAuthenticated: computed(() => store.isAuthenticated.value),
+    user: computed(() => store.user),
+    isAuthenticated: computed(() => store.isAuthenticated),
     login,
     register,
     logout,

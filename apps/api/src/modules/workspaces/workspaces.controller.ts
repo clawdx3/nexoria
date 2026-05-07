@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { WorkspacesService } from './workspaces.service';
 import { CreateWorkspaceDto, UpdateWorkspaceDto, WorkspaceResponseDto, WorkspaceMemberResponseDto, AddMemberDto } from './dto/create-workspace.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-request.interface';
 
 @ApiTags('Workspaces')
 @ApiBearerAuth()
@@ -13,7 +14,7 @@ export class WorkspacesController {
 
   @Get()
   @ApiResponse({ status: 200, type: [WorkspaceResponseDto] })
-  findByUser(@Request() req): Promise<WorkspaceResponseDto[]> {
+  findByUser(@Request() req: AuthenticatedRequest): Promise<WorkspaceResponseDto[]> {
     return this.service.findByUser(req.user.id);
   }
 
@@ -25,7 +26,7 @@ export class WorkspacesController {
 
   @Post()
   @ApiResponse({ status: 201, type: WorkspaceResponseDto })
-  create(@Body() dto: CreateWorkspaceDto, @Request() req): Promise<WorkspaceResponseDto> {
+  create(@Body() dto: CreateWorkspaceDto, @Request() req: AuthenticatedRequest): Promise<WorkspaceResponseDto> {
     return this.service.create(req.user.id, dto);
   }
 
@@ -43,7 +44,7 @@ export class WorkspacesController {
 
   @Post(':id/members')
   @ApiResponse({ status: 201 })
-  addMember(@Param('id') id: string, @Body() dto: AddMemberDto, @Request() req) {
+  addMember(@Param('id') id: string, @Body() dto: AddMemberDto, @Request() req: AuthenticatedRequest) {
     return this.service.addMember(id, dto, req.user.id);
   }
 

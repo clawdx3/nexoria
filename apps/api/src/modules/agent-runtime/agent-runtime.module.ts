@@ -8,9 +8,10 @@ import { ReflectionService } from './reflection/reflection.service';
 import { MemoryEntry } from '../../database/entities/memory-entry.entity';
 import { AgentRuntimeController } from './agent-runtime.controller';
 import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
+import { TasksModule } from '../tasks/tasks.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([MemoryEntry]), AgentProfilesModule],
+  imports: [TypeOrmModule.forFeature([MemoryEntry]), AgentProfilesModule, TasksModule],
   providers: [AgentExecutorService, ToolRegistryService, LlmProviderFactory, MemoryContextBuilder, ReflectionService],
   controllers: [AgentRuntimeController],
   exports: [AgentExecutorService, ToolRegistryService, LlmProviderFactory, MemoryContextBuilder, ReflectionService],

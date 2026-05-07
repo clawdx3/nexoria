@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import type { AgentTool } from '../../interfaces/agent-tool.interface'
-import { Injectable } from '@nestjs/common'
+import type { AgentTool, ToolContext } from '../../../shared/interfaces/agent.interfaces'
 
 /**
  * Browser tool for agents.
@@ -14,18 +13,20 @@ const openWebpageSchema = z.object({
   maxLength: z.number().optional().default(8000).describe('Maximum characters of text to return'),
 })
 
-export const openWebpageTool: AgentTool<typeof openWebpageSchema> = {
+type OpenWebpageParams = z.infer<typeof openWebpageSchema>
+
+export const openWebpageTool: AgentTool = {
   name: 'open_webpage',
   description:
     'Load a public webpage and return the visible text content. Use this for research, fact-checking, reading documentation, or checking published posts. Cannot access sites requiring login unless cookies are pre-configured.',
   schema: openWebpageSchema,
-  riskLevel: 'safe',
+  riskLevel: 1,
 
-  async execute(params, context) {
+  async execute(params: OpenWebpageParams, _context: ToolContext) {
     // Lazy-load playwright to avoid startup cost when tool isn't used
-    const { chromium } = await import('playwright')
+    const { chromium } = (await new Function('specifier', 'return import(specifier)')('playwright')) as any
 
-    let browser
+    let browser: any
     try {
       browser = await chromium.launch({
         headless: true,
@@ -51,8 +52,9 @@ export const openWebpageTool: AgentTool<typeof openWebpageSchema> = {
 
       // Extract visible text (strips scripts, styles, nav, etc.)
       const text = await page.evaluate(() => {
+        const document = (globalThis as any).document
         // Remove hidden elements
-        document.querySelectorAll('script, style, nav, header, footer, [aria-hidden="true"]').forEach((el) => el.remove())
+        document.querySelectorAll('script, style, nav, header, footer, [aria-hidden="true"]').forEach((el: any) => el.remove())
         return document.body?.innerText || ''
       })
 

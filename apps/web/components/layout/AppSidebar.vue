@@ -1,68 +1,98 @@
 <template>
   <aside
-    class="flex h-screen w-64 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+    class="flex h-screen w-[276px] shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
   >
-    <div class="flex h-16 items-center gap-3 px-4">
-      <img src="/logo.svg" alt="Nexoria" class="h-8 w-8" />
-      <span class="text-lg font-semibold tracking-tight">Nexoria</span>
+    <div class="flex h-16 items-center gap-3 border-b border-slate-200 px-5 dark:border-slate-800">
+      <img src="/logo.svg" alt="Nexoria" class="h-9 w-9 rounded-lg" />
+      <div class="min-w-0">
+        <div class="text-[15px] font-semibold tracking-tight">Nexoria</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400">Agent operations</div>
+      </div>
     </div>
 
-    <nav class="flex-1 space-y-1 px-3 py-4">
-      <UButton
+    <nav class="flex-1 overflow-y-auto px-3 py-4">
+      <div class="px-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        Workspace
+      </div>
+      <NuxtLink
         v-for="item in topNav"
         :key="item.to"
-        variant="ghost"
-        color="gray"
-        :class="[
-          'w-full justify-start gap-3',
-          $route.path === item.to ? 'bg-slate-100 dark:bg-slate-800' : ''
-        ]"
         :to="item.to"
-        @click="navigateTo(item.to)"
+        :class="[
+          'mb-1 flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition',
+          isActive(item.to)
+            ? 'bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
+        ]"
       >
-        <component :is="item.icon" class="h-5 w-5" />
+        <component :is="item.icon" class="h-4 w-4 shrink-0" />
         <span>{{ item.label }}</span>
-      </UButton>
+        <span v-if="item.badge" class="ml-auto rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300">
+          {{ item.badge }}
+        </span>
+      </NuxtLink>
 
-      <div class="pt-4">
-        <div class="px-3 pb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-          Agents
+      <div class="mt-6">
+        <div class="mb-2 flex items-center justify-between px-2">
+          <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Active agents
+          </div>
+          <button class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200" @click="navigateTo('/settings/agents')">
+            <Plus class="h-3.5 w-3.5" />
+          </button>
         </div>
         <div v-if="isLoading" class="px-3 py-2">
-          <LoadingSpinner size="sm" />
+          <CommonLoadingSpinner size="sm" />
         </div>
-        <UButton
+        <NuxtLink
           v-for="agent in agents"
           :key="agent.id"
-          variant="ghost"
-          color="gray"
+          :to="`/chat/${agent.id}`"
           :class="[
-            'w-full justify-start gap-3',
-            $route.path === `/chat/${agent.id}` ? 'bg-slate-100 dark:bg-slate-800' : ''
+            'mb-1 flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition',
+            route.path === `/chat/${agent.id}`
+              ? 'bg-cyan-50 text-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-200'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
           ]"
-          @click="navigateTo(`/chat/${agent.id}`)"
         >
-          <Bot class="h-5 w-5" />
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+            <Bot class="h-3.5 w-3.5" />
+          </span>
           <span class="truncate">{{ agent.name }}</span>
-        </UButton>
+        </NuxtLink>
+        <div v-if="!isLoading && agents.length === 0" class="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500 dark:border-slate-800">
+          No agents in this workspace.
+        </div>
       </div>
     </nav>
 
     <div class="border-t border-slate-200 p-3 dark:border-slate-800">
-      <UButton
+      <div class="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-medium text-slate-600 dark:text-slate-300">System health</span>
+          <span class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+            Online
+          </span>
+        </div>
+        <div class="mt-2 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800">
+          <div class="h-full w-[78%] rounded-full bg-cyan-500"></div>
+        </div>
+      </div>
+      <NuxtLink
         v-for="item in bottomNav"
         :key="item.to"
-        variant="ghost"
-        color="gray"
+        :to="item.to"
         :class="[
-          'w-full justify-start gap-3',
-          $route.path.startsWith(item.to) ? 'bg-slate-100 dark:bg-slate-800' : ''
+          'flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition',
+          route.path.startsWith(item.to)
+            ? 'bg-slate-100 text-slate-950 dark:bg-slate-900 dark:text-slate-100'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
         ]"
-        @click="navigateTo(item.to)"
       >
-        <component :is="item.icon" class="h-5 w-5" />
+        <component :is="item.icon" class="h-4 w-4" />
         <span>{{ item.label }}</span>
-      </UButton>
+      </NuxtLink>
     </div>
   </aside>
 </template>
@@ -74,7 +104,11 @@ import {
   FileCheck,
   MessageSquare,
   Settings,
-  Bot
+  Bot,
+  Brain,
+  Plug,
+  SlidersHorizontal,
+  Plus
 } from 'lucide-vue-next'
 
 const { agents, isLoading, fetchAgents } = useAgent()
@@ -84,12 +118,20 @@ onMounted(() => { void fetchAgents() })
 
 const topNav = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-  { label: 'Chat', to: '/', icon: MessageSquare },
+  { label: 'Agent Studio', to: '/settings/agents', icon: SlidersHorizontal },
   { label: 'Tasks', to: '/tasks', icon: CheckCircle },
-  { label: 'Approvals', to: '/approvals', icon: FileCheck }
+  { label: 'Approvals', to: '/approvals', icon: FileCheck, badge: '3' },
+  { label: 'Memory', to: '/settings/memory', icon: Brain },
+  { label: 'Integrations', to: '/settings/integrations', icon: Plug },
+  { label: 'Chat', to: '/', icon: MessageSquare }
 ]
 
 const bottomNav = [
   { label: 'Settings', to: '/settings', icon: Settings }
 ]
+
+function isActive (to: string): boolean {
+  if (to === '/') return route.path === '/'
+  return route.path.startsWith(to)
+}
 </script>

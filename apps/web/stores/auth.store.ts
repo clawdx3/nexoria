@@ -10,31 +10,29 @@ export const useAuthStore = defineStore('auth', () => {
       method: 'POST',
       body: payload
     })
-    // Backend sets httpOnly cookie; we keep a js-readable flag for UI checks
-    useCookie('nx_auth', { sameSite: 'lax', maxAge: 60 * 60 * 24 * 7 }).value = '1'
+    useCookie('access_token', { sameSite: 'lax', maxAge: 60 * 60 * 24 * 7 }).value = res.accessToken
+    useCookie('nx_auth').value = null
     user.value = res.user
   }
 
   async function register (payload: RegisterPayload): Promise<void> {
-    const res = await useApi<AuthResponse>('/auth/register', {
+    await useApi('/auth/register', {
       method: 'POST',
       body: payload
     })
-    useCookie('nx_auth', { sameSite: 'lax', maxAge: 60 * 60 * 24 * 7 }).value = '1'
-    user.value = res.user
+    await login({ email: payload.email, password: payload.password })
   }
 
   function logout (): void {
     useCookie('nx_auth').value = null
+    useCookie('access_token').value = null
     user.value = null
     navigateTo('/login')
   }
 
   async function tryFetchUser (): Promise<void> {
     try {
-      // If backend adds /users/me or /auth/me in future
-      const res = await useApi<{ user: User }>('/users/me')
-      user.value = res.user
+      user.value = await useApi<User>('/auth/me')
     } catch {
       user.value = null
     }

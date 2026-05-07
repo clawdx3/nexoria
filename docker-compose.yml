@@ -51,6 +51,11 @@ services:
       CAMOFOX_ACCESS_KEY: ${CAMOFOX_ACCESS_KEY:-dev-camofox-key-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b}
+      DEFAULT_MODEL_PROVIDER: ${DEFAULT_MODEL_PROVIDER:-ollama}
+      DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-gpt-oss:120b}
     ports:
       - "3000:3000"
     depends_on:
@@ -58,10 +63,22 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./apps/api:/app/apps/api
-      - /app/apps/api/node_modules
-    command: ["pnpm", "--filter", "api", "dev"]
+    command: ["node", "apps/api/dist/main"]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: nexoria_web
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      HOST: 0.0.0.0
+      NUXT_PUBLIC_API_BASE_URL: http://localhost:3000/api/v1
+    ports:
+      - "3001:3001"
+    depends_on:
+      - api
 
   worker:
     build:
@@ -81,13 +98,18 @@ services:
       CAMOFOX_ACCESS_KEY: ${CAMOFOX_ACCESS_KEY:-dev-camofox-key-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b}
+      DEFAULT_MODEL_PROVIDER: ${DEFAULT_MODEL_PROVIDER:-ollama}
+      DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-gpt-oss:120b}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: ["pnpm", "--filter", "api", "start:prod"]
-    # Override with a worker entrypoint when BullMQ workers are wired
+    command: ["node", "-e", "console.log('Nexoria worker stub idle: BullMQ processors are not wired yet.'); setInterval(() => {}, 2147483647)"]
+    # Replace with a real worker entrypoint when BullMQ processors are wired
 
   migrate:
     build:

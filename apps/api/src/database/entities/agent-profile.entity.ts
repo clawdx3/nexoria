@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { Workspace } from './workspace.entity';
 
-export type ModelProvider = 'openai' | 'anthropic' | 'openrouter' | 'custom';
+export type ModelProvider = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'custom';
 export type AgentRole = 'orchestrator' | 'specialist';
 
 @Entity('agent_profiles')
@@ -33,7 +33,7 @@ export class AgentProfile {
   @Column({ type: 'text' })
   systemPrompt: string;
 
-  @Column({ type: 'enum', enum: ['openai', 'anthropic', 'openrouter', 'custom'] })
+  @Column({ type: 'enum', enum: ['openai', 'anthropic', 'openrouter', 'ollama', 'custom'] })
   modelProvider: ModelProvider;
 
   @Column()

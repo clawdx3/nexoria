@@ -7,7 +7,7 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref<string | null>(null)
 
   async function sendMessage (content: string, agentProfileId: string = 'orchestrator'): Promise<void> {
-    const workspaceId = useCookie('workspace_id').value
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
     if (!workspaceId) throw new Error('No workspace selected')
 
     const userMsg: ChatMessage = {

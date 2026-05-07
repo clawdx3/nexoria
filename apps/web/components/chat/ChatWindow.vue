@@ -35,7 +35,7 @@
 
       <!-- Delegation status -->
       <div v-if="chatStore.isLoading" class="flex items-center gap-2 text-sm text-slate-500">
-        <LoadingSpinner size="sm" />
+        <CommonLoadingSpinner size="sm" />
         <span v-if="delegatedAgent">{{ delegatedAgent }} is working on this...</span>
         <span v-else>Thinking...</span>
       </div>

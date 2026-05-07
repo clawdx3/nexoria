@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
 import { CreateAuditLogDto, AuditLogResponseDto } from './dto/audit-log.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-request.interface';
 
 @ApiTags('Audit')
 @ApiBearerAuth()
@@ -22,7 +23,7 @@ export class AuditController {
   create(
     @Param('workspaceId') wsId: string,
     @Body() dto: CreateAuditLogDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ): Promise<AuditLogResponseDto> {
     return this.service.log(wsId, { ...dto, actorId: req.user.id });
   }

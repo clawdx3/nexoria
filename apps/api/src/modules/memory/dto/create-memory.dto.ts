@@ -41,6 +41,9 @@ export class MemoryResponseDto {
   id: string;
 
   @ApiProperty()
+  workspaceId: string;
+
+  @ApiProperty()
   userId: string;
 
   @ApiProperty()
@@ -51,6 +54,9 @@ export class MemoryResponseDto {
 
   @ApiProperty()
   content: string;
+
+  @ApiProperty()
+  metadata: Record<string, any>;
 
   @ApiProperty()
   confidence: number;

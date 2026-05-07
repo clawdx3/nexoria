@@ -2,12 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { AgentTool, ToolContext } from '../../../shared/interfaces/agent.interfaces';
 import { z } from 'zod';
 import { openWebpageTool } from '../tools/open-webpage.tool';
+import { TasksService } from '../../tasks/tasks.service';
 
 @Injectable()
 export class ToolRegistryService {
   private tools: Map<string, AgentTool> = new Map();
 
-  constructor() {
+  constructor(private readonly tasksService: TasksService) {
     this.registerBuiltIns();
   }
 
@@ -33,9 +34,24 @@ export class ToolRegistryService {
       schema: z.object({ title: z.string(), description: z.string().optional(), priority: z.enum(['low', 'medium', 'high', 'urgent']).optional() }),
       riskLevel: 2,
       execute: async (args, ctx) => {
-        // Tool implementations are injected with their respective services in practice.
-        // Here we return a structured result for the executor.
-        return { success: true, task: { title: args.title, description: args.description, priority: args.priority ?? 'medium', workspaceId: ctx.workspaceId } };
+        const task = await this.tasksService.create(ctx.workspaceId, {
+          title: args.title,
+          description: args.description,
+          priority: args.priority ?? 'medium',
+          metadata: { createdByTool: 'delegate_task', agentProfileId: ctx.agentProfile.id },
+        });
+        return { success: true, task };
+      },
+    });
+
+    this.register({
+      name: 'list_tasks',
+      description: 'List current workspace tasks.',
+      schema: z.object({}),
+      riskLevel: 1,
+      execute: async (_args, ctx) => {
+        const tasks = await this.tasksService.findByWorkspace(ctx.workspaceId);
+        return { success: true, tasks };
       },
     });
 
@@ -95,7 +111,31 @@ export class ToolRegistryService {
       schema: z.object({ title: z.string(), description: z.string().optional(), assigneeId: z.string().optional(), dueDate: z.string().optional() }),
       riskLevel: 2,
       execute: async (args, ctx) => {
-        return { success: true, task: { ...args, workspaceId: ctx.workspaceId } };
+        const task = await this.tasksService.create(ctx.workspaceId, {
+          title: args.title,
+          description: args.description,
+          assignedToId: args.assigneeId,
+          dueDate: args.dueDate ? new Date(args.dueDate) : undefined,
+          metadata: { createdByTool: 'create_internal_task', agentProfileId: ctx.agentProfile.id },
+        });
+        return { success: true, task };
+      },
+    });
+
+    this.register({
+      name: 'create_task',
+      description: 'Create a workspace task. Alias for create_internal_task.',
+      schema: z.object({ title: z.string(), description: z.string().optional(), priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(), dueDate: z.string().optional() }),
+      riskLevel: 2,
+      execute: async (args, ctx) => {
+        const task = await this.tasksService.create(ctx.workspaceId, {
+          title: args.title,
+          description: args.description,
+          priority: args.priority ?? 'medium',
+          dueDate: args.dueDate ? new Date(args.dueDate) : undefined,
+          metadata: { createdByTool: 'create_task', agentProfileId: ctx.agentProfile.id },
+        });
+        return { success: true, task };
       },
     });
 

@@ -1,5 +1,6 @@
 import { IsString, IsOptional, IsEnum, IsUUID, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { MissionStatus } from '../../../database/entities/mission.entity';
 
 export class CreateMissionDto {
   @ApiProperty({ example: 'Generate weekly posts' })
@@ -36,7 +37,7 @@ export class UpdateMissionDto {
   @ApiPropertyOptional({ enum: ['queued', 'running', 'paused', 'completed', 'failed', 'cancelled'] })
   @IsOptional()
   @IsEnum(['queued', 'running', 'paused', 'completed', 'failed', 'cancelled'])
-  status?: string;
+  status?: MissionStatus;
 }
 
 export class MissionResponseDto {

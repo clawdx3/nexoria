@@ -6,6 +6,7 @@ import * as bcrypt from 'bcryptjs';
 import { User } from '../../database/entities/user.entity';
 import { LoginDto, LoginResponseDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { UserResponseDto } from '../users/dto/create-user.dto';
 
 @Injectable()
 export class AuthService {
@@ -14,7 +15,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<User> {
+  async register(dto: RegisterDto): Promise<UserResponseDto> {
     const existing = await this.userRepo.findOne({ where: { email: dto.email } });
     if (existing) throw new UnauthorizedException('Email already in use');
 
@@ -25,7 +26,8 @@ export class AuthService {
       firstName: dto.firstName,
       lastName: dto.lastName,
     });
-    return this.userRepo.save(user);
+    const saved = await this.userRepo.save(user);
+    return this.toDto(saved);
   }
 
   async login(dto: LoginDto): Promise<LoginResponseDto> {
@@ -49,5 +51,18 @@ export class AuthService {
 
   async validateUser(userId: string): Promise<User | null> {
     return this.userRepo.findOne({ where: { id: userId, isActive: true } });
+  }
+
+  toDto(user: User): UserResponseDto {
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      avatarUrl: user.avatarUrl,
+      isSuperAdmin: user.isSuperAdmin,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+    };
   }
 }

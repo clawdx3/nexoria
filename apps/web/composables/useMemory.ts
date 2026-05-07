@@ -6,13 +6,23 @@ export function useMemory () {
 
   async function fetchMemories (): Promise<void> {
     isLoading.value = true
-    const res = await useApi<{ memories: MemoryEntry[] }>('/api/memory')
-    memories.value = res.memories || []
-    isLoading.value = false
+    try {
+      const ws = await useWorkspaceStore().ensureWorkspace()
+      if (!ws) {
+        memories.value = []
+        return
+      }
+      const res = await useApi<MemoryEntry[]>(`/workspaces/${ws}/memory`)
+      memories.value = res || []
+    } finally {
+      isLoading.value = false
+    }
   }
 
   async function reviewMemory (id: string, action: 'approve' | 'reject' | 'edit', content?: string): Promise<void> {
-    await useApi(`/api/memory/${id}/review`, {
+    const ws = await useWorkspaceStore().ensureWorkspace()
+    if (!ws) return
+    await useApi(`/workspaces/${ws}/memory/${id}/review`, {
       method: 'POST',
       body: { action, content }
     })

@@ -1,33 +1,45 @@
 import { Injectable } from '@nestjs/common';
 import { generateText, LanguageModel } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { createOpenAI, openai } from '@ai-sdk/openai';
 import { AgentContext } from '../../../shared/interfaces/agent.interfaces';
 
 @Injectable()
 export class LlmProviderFactory {
   resolveModel(ctx: AgentContext): LanguageModel {
     const { modelProvider, modelName, modelConfig } = ctx.agentProfile;
+    const asLanguageModel = (model: unknown): LanguageModel => model as LanguageModel;
+
     switch (modelProvider) {
       case 'openai':
-        return openai(modelName, { ...modelConfig });
+        return asLanguageModel(openai(modelName, { ...modelConfig }));
       case 'anthropic':
         // Use OpenRouter as proxy for anthropic or custom integration
-        return openai(modelName, {
+        return asLanguageModel(createOpenAI({
           apiKey: modelConfig?.apiKey || process.env.OPENROUTER_API_KEY,
           baseURL: modelConfig?.baseUrl || 'https://openrouter.ai/api/v1',
-        });
+        })(modelName));
       case 'openrouter':
-        return openai(modelName, {
+        return asLanguageModel(createOpenAI({
           apiKey: modelConfig?.apiKey || process.env.OPENROUTER_API_KEY,
           baseURL: modelConfig?.baseUrl || 'https://openrouter.ai/api/v1',
-        });
+        })(modelName));
+      case 'ollama': {
+        const apiKey = modelConfig?.apiKey || process.env.OLLAMA_API_KEY;
+        if (!apiKey) {
+          throw new Error('Missing Ollama API key. Set OLLAMA_API_KEY to use the Ollama provider.');
+        }
+        return asLanguageModel(createOpenAI({
+          apiKey,
+          baseURL: modelConfig?.baseUrl || process.env.OLLAMA_BASE_URL || 'https://ollama.com/v1',
+        })(modelName));
+      }
       case 'custom':
-        return openai(modelName, {
+        return asLanguageModel(createOpenAI({
           apiKey: modelConfig?.apiKey,
           baseURL: modelConfig?.baseUrl,
-        });
+        })(modelName));
       default:
-        return openai('gpt-4o');
+        return asLanguageModel(openai('gpt-4o'));
     }
   }
 

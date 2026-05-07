@@ -3,33 +3,33 @@ export function useApprovals () {
   const isLoading = ref(false)
 
   async function fetchApprovals (): Promise<void> {
-    const ws = useCookie('workspace_id').value
+    const ws = await useWorkspaceStore().ensureWorkspace()
     if (!ws) return
     isLoading.value = true
     try {
-      const res = await useApi<{ approvals: any[] }>(`/workspaces/${ws}/approvals`)
-      approvals.value = res.approvals || []
+      const res = await useApi<any[]>(`/workspaces/${ws}/approvals`)
+      approvals.value = res || []
     } finally {
       isLoading.value = false
     }
   }
 
   async function approve (id: string, decision?: string): Promise<void> {
-    const ws = useCookie('workspace_id').value
+    const ws = await useWorkspaceStore().ensureWorkspace()
     if (!ws) return
-    await useApi(`/workspaces/${ws}/approvals/${id}/approve`, {
+    await useApi(`/workspaces/${ws}/approvals/${id}/decisions`, {
       method: 'POST',
-      body: { decision }
+      body: { outcome: 'approve', reason: decision }
     })
     await fetchApprovals()
   }
 
   async function reject (id: string, reason?: string): Promise<void> {
-    const ws = useCookie('workspace_id').value
+    const ws = await useWorkspaceStore().ensureWorkspace()
     if (!ws) return
-    await useApi(`/workspaces/${ws}/approvals/${id}/reject`, {
+    await useApi(`/workspaces/${ws}/approvals/${id}/decisions`, {
       method: 'POST',
-      body: { reason }
+      body: { outcome: 'reject', reason }
     })
     await fetchApprovals()
   }

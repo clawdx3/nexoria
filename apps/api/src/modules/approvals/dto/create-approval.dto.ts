@@ -52,6 +52,9 @@ export class ApprovalResponseDto {
   id: string;
 
   @ApiProperty()
+  workspaceId: string;
+
+  @ApiProperty()
   type: string;
 
   @ApiProperty()
@@ -61,5 +64,23 @@ export class ApprovalResponseDto {
   title: string;
 
   @ApiProperty()
+  description: string;
+
+  @ApiProperty()
+  taskId: string;
+
+  @ApiProperty()
+  missionId: string;
+
+  @ApiProperty()
+  draftId: string;
+
+  @ApiProperty()
+  metadata: Record<string, any>;
+
+  @ApiProperty()
   createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
 }

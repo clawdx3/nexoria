@@ -25,7 +25,7 @@ export default defineNuxtConfig({
   },
   typescript: {
     strict: true,
-    typeCheck: true
+    typeCheck: process.env.NUXT_TYPECHECK !== 'false'
   },
   app: {
     head: {

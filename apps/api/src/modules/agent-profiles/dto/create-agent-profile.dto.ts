@@ -1,5 +1,6 @@
-import { IsString, IsOptional, IsObject, IsArray, IsInt, IsBoolean, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray, IsInt, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AgentRole, ModelProvider } from '../../../database/entities/agent-profile.entity';
 
 export class CreateAgentProfileDto {
   @ApiProperty({ example: 'Social Media Agent' })
@@ -15,9 +16,9 @@ export class CreateAgentProfileDto {
   @IsString()
   systemPrompt: string;
 
-  @ApiProperty({ enum: ['openai', 'anthropic', 'openrouter', 'custom'] })
-  @IsEnum(['openai', 'anthropic', 'openrouter', 'custom'])
-  modelProvider: string;
+  @ApiProperty({ enum: ['openai', 'anthropic', 'openrouter', 'ollama', 'custom'] })
+  @IsEnum(['openai', 'anthropic', 'openrouter', 'ollama', 'custom'])
+  modelProvider: ModelProvider;
 
   @ApiProperty({ example: 'gpt-4o' })
   @IsString()
@@ -37,7 +38,7 @@ export class CreateAgentProfileDto {
   @ApiPropertyOptional({ enum: ['orchestrator', 'specialist'], default: 'specialist' })
   @IsOptional()
   @IsEnum(['orchestrator', 'specialist'])
-  role?: string;
+  role?: AgentRole;
 
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
@@ -63,8 +64,8 @@ export class UpdateAgentProfileDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsEnum(['openai', 'anthropic', 'openrouter', 'custom'])
-  modelProvider?: string;
+  @IsEnum(['openai', 'anthropic', 'openrouter', 'ollama', 'custom'])
+  modelProvider?: ModelProvider;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -93,7 +94,7 @@ export class AgentProfileResponseDto {
   id: string;
 
   @ApiProperty()
-  workspaceId: string;
+  workspaceId: string | null;
 
   @ApiProperty()
   name: string;
@@ -102,10 +103,16 @@ export class AgentProfileResponseDto {
   description: string;
 
   @ApiProperty()
+  systemPrompt: string;
+
+  @ApiProperty()
   modelProvider: string;
 
   @ApiProperty()
   modelName: string;
+
+  @ApiProperty()
+  modelConfig: Record<string, any> | null;
 
   @ApiProperty()
   enabledTools: string[];

@@ -31,6 +31,11 @@ export class CreateAuditLogDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsObject()
+  metadata?: Record<string, any>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   reason?: string;
 

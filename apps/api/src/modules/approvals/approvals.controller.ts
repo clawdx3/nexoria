@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { ApprovalsService } from './approvals.service';
 import { CreateApprovalDto, SubmitDecisionDto, ApprovalResponseDto } from './dto/create-approval.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-request.interface';
 
 @ApiTags('Approvals')
 @ApiBearerAuth()
@@ -31,7 +32,7 @@ export class ApprovalsController {
 
   @Post(':id/decisions')
   @ApiResponse({ status: 200, type: ApprovalResponseDto })
-  submitDecision(@Param('id') id: string, @Body() dto: SubmitDecisionDto, @Request() req): Promise<ApprovalResponseDto> {
+  submitDecision(@Param('id') id: string, @Body() dto: SubmitDecisionDto, @Request() req: AuthenticatedRequest): Promise<ApprovalResponseDto> {
     return this.service.submitDecision(id, req.user.id, dto);
   }
 }

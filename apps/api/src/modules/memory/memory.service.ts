@@ -37,24 +37,40 @@ export class MemoryService {
     return items.map((i) => this.toDto(i));
   }
 
+  async findByWorkspaceUser(workspaceId: string, userId: string): Promise<MemoryResponseDto[]> {
+    return this.findByUser(userId, workspaceId);
+  }
+
   async semanticSearch(workspaceId: string, dto: SemanticSearchDto, embedding: number[]): Promise<MemoryResponseDto[]> {
     // pgvector cosine similarity search using raw SQL
     const limit = dto.limit ?? 10;
-    const raw = await this.repo.query(
-      `SELECT id, user_id as "userId", tier, type, content, metadata, confidence,
-              positive_uses as "positiveUses", negative_uses as "negativeUses", created_at as "createdAt"
+    const raw = (await this.repo.query(
+      `SELECT id, "userId", tier, type, content, metadata, confidence,
+              "positiveUses", "negativeUses", "createdAt"
        FROM memory_entries
-       WHERE workspace_id = $1 AND embedding IS NOT NULL
+       WHERE "workspaceId" = $1 AND embedding IS NOT NULL
        ORDER BY embedding <=> $2
        LIMIT $3`,
       [workspaceId, JSON.stringify(embedding), limit],
-    );
+    )) as Array<{
+      id: string;
+      userId: string;
+      tier: string;
+      type: string;
+      content: string;
+      confidence: number;
+      positiveUses: number;
+      negativeUses: number;
+      createdAt: Date;
+    }>;
     return raw.map((r) => ({
       id: r.id,
+      workspaceId,
       userId: r.userId,
       tier: r.tier,
       type: r.type,
       content: r.content,
+      metadata: {},
       confidence: r.confidence,
       positiveUses: r.positiveUses,
       negativeUses: r.negativeUses,
@@ -70,10 +86,12 @@ export class MemoryService {
   private toDto(e: MemoryEntry): MemoryResponseDto {
     return {
       id: e.id,
+      workspaceId: e.workspaceId,
       userId: e.userId,
       tier: e.tier,
       type: e.type,
       content: e.content,
+      metadata: e.metadata ?? {},
       confidence: e.confidence,
       positiveUses: e.positiveUses,
       negativeUses: e.negativeUses,

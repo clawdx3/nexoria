@@ -1,6 +1,7 @@
-import { IsString, IsOptional, IsEnum, IsDate, IsObject, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsDate, IsObject, IsArray, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { TaskPriority, TaskStatus } from '../../../database/entities/task.entity';
 
 export class CreateTaskDto {
   @ApiProperty({ example: 'Launch summer campaign' })
@@ -20,12 +21,12 @@ export class CreateTaskDto {
   @ApiPropertyOptional({ enum: ['pending', 'in_progress', 'done', 'cancelled'] })
   @IsOptional()
   @IsEnum(['pending', 'in_progress', 'done', 'cancelled'])
-  status?: string;
+  status?: TaskStatus;
 
   @ApiPropertyOptional({ enum: ['low', 'medium', 'high', 'urgent'] })
   @IsOptional()
   @IsEnum(['low', 'medium', 'high', 'urgent'])
-  priority?: string;
+  priority?: TaskPriority;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -64,12 +65,12 @@ export class UpdateTaskDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsEnum(['pending', 'in_progress', 'done', 'cancelled'])
-  status?: string;
+  status?: TaskStatus;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsEnum(['low', 'medium', 'high', 'urgent'])
-  priority?: string;
+  priority?: TaskPriority;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -87,6 +88,11 @@ export class UpdateTaskDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, any>;
 }
 
 export class TaskResponseDto {
@@ -95,6 +101,9 @@ export class TaskResponseDto {
 
   @ApiProperty()
   workspaceId: string;
+
+  @ApiProperty()
+  projectId: string;
 
   @ApiProperty()
   title: string;
@@ -115,5 +124,14 @@ export class TaskResponseDto {
   dueDate: Date;
 
   @ApiProperty()
+  tags: string[];
+
+  @ApiProperty()
+  metadata: Record<string, any>;
+
+  @ApiProperty()
   createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
 }

@@ -49,13 +49,17 @@ export class TasksService {
     return {
       id: task.id,
       workspaceId: task.workspaceId,
+      projectId: task.projectId,
       title: task.title,
       description: task.description,
       status: task.status,
       priority: task.priority,
       assignedToId: task.assignedToId,
       dueDate: task.dueDate,
+      tags: task.tags ?? [],
+      metadata: task.metadata ?? {},
       createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
     };
   }
 }

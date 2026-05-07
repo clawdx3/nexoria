@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { AgentProfile, AgentRole, ModelProvider } from '../../database/entities/agent-profile.entity';
 import { CreateAgentProfileDto, UpdateAgentProfileDto, AgentProfileResponseDto } from './dto/create-agent-profile.dto';
 
@@ -33,7 +33,7 @@ export class AgentProfilesService {
   }
 
   async findByWorkspace(workspaceId: string): Promise<AgentProfileResponseDto[]> {
-    const items = await this.repo.find({ where: [{ workspaceId }, { workspaceId: null, isBuiltIn: true }], order: { createdAt: 'DESC' } });
+    const items = await this.repo.find({ where: [{ workspaceId }, { workspaceId: IsNull(), isBuiltIn: true }], order: { createdAt: 'DESC' } });
     return items.map((i) => this.toDto(i));
   }
 
@@ -52,8 +52,10 @@ export class AgentProfilesService {
       workspaceId: p.workspaceId,
       name: p.name,
       description: p.description,
+      systemPrompt: p.systemPrompt,
       modelProvider: p.modelProvider,
       modelName: p.modelName,
+      modelConfig: p.modelConfig,
       enabledTools: p.enabledTools,
       role: p.role,
       defaultAutonomyLevel: p.defaultAutonomyLevel,

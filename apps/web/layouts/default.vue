@@ -1,7 +1,7 @@
 <template>
-  <AppLayout>
+  <LayoutAppLayout>
     <slot />
-  </AppLayout>
+  </LayoutAppLayout>
 </template>
 
 <script setup lang="ts">

@@ -27,9 +27,9 @@
     </div>
 
     <div class="flex-1 overflow-auto p-6">
-      <LoadingSpinner v-if="isLoading" />
+      <CommonLoadingSpinner v-if="isLoading" />
       <div v-else-if="tasks.length === 0">
-        <EmptyState :icon="CheckCircle" title="No tasks yet" description="Create your first task to get started."
+        <EmptyState :icon="CheckCircle" title="No tasks yet" description="Create your first task to get started.">
           <template #action>
             <UButton size="sm" color="indigo" class="mt-4" @click="showCreate = true">Create task</UButton>
           </template>
