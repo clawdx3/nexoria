@@ -1,0 +1,109 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: nexoria_postgres
+    environment:
+      POSTGRES_USER: nexoria
+      POSTGRES_PASSWORD: nexoria
+      POSTGRES_DB: nexoria
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexoria -d nexoria"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexoria_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: nexoria_api
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: nexoria
+      DB_PASSWORD: nexoria
+      DB_NAME: nexoria
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: local-dev-secret-change-me
+      JWT_EXPIRES_IN: 7d
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app/apps/api
+      - /app/apps/api/node_modules
+    command: ["pnpm", "--filter", "api", "dev"]
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: nexoria_worker
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: nexoria
+      DB_PASSWORD: nexoria
+      DB_NAME: nexoria
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: local-dev-secret-change-me
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["pnpm", "--filter", "api", "start:prod"]
+    # Override with a worker entrypoint when BullMQ workers are wired
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: nexoria_migrate
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: nexoria
+      DB_PASSWORD: nexoria
+      DB_NAME: nexoria
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["pnpm", "--filter", "api", "typeorm", "migration:run"]
+    # Replace with actual TypeORM CLI command when migrations exist
+    profiles: ["migrate"]
+
+volumes:
+  postgres_data:
+  redis_data:

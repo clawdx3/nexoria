@@ -1,0 +1,25 @@
+import { Controller, Post, Body } from '@nestjs/common';
+import { ApiTags, ApiResponse } from '@nestjs/swagger';
+import { AuthService } from './auth.service';
+import { LoginDto, LoginResponseDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { UserResponseDto } from '../users/dto/create-user.dto';
+
+@ApiTags('Auth')
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('login')
+  @ApiResponse({ status: 200, type: LoginResponseDto })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  login(@Body() dto: LoginDto): Promise<LoginResponseDto> {
+    return this.authService.login(dto);
+  }
+
+  @Post('register')
+  @ApiResponse({ status: 201, type: UserResponseDto })
+  register(@Body() dto: RegisterDto): Promise<UserResponseDto> {
+    return this.authService.register(dto) as any;
+  }
+}
