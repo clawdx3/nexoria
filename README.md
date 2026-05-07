@@ -42,7 +42,11 @@ AI-powered agent platform for small businesses.
         config/
         database/entities/
       test/
-    web/          # Placeholder for Nuxt frontend
+    web/          # Nuxt 3 frontend
+      components/   # Chat, Tasks, Approvals, Layout
+      composables/  # API wrappers, stores
+      pages/        # Dashboard, Chat, Tasks, Approvals, Settings
+      stores/       # Pinia stores
   docker-compose.yml
   .env.example
   README.md

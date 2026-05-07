@@ -186,3 +186,18 @@ docker compose run --rm migrate
 ## Contact
 
 GitHub: https://github.com/clawdx3/nexoria
+
+## Frontend (Nuxt 3)
+
+- **Tech**: Nuxt 3, Vue 3 Composition API, TypeScript, Tailwind CSS, @nuxt/ui, Pinia
+- **Icons**: lucide-vue-next (NO emojis)
+- **Pages**: / (dashboard chat), /tasks, /approvals, /chat/[profile], /settings/*
+- **Components**: ChatWindow, ChatMessage, ChatInput, TaskCard, TaskStatusBadge, ApprovalCard, ApprovalPreview, AppSidebar, AppHeader
+- **Composables**: useApi, useAuth, useAgent, useTasks, useApprovals, useMemory, useRealtime
+- **Stores**: auth.store, workspace.store, chat.store, tasks.store
+
+## Running the full stack
+
+docker compose up -d
+# API on :3000, Swagger on :3000/docs
+# Web dev server on :3001 (or proxy via Caddy)
