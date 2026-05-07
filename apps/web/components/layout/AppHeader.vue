@@ -8,7 +8,7 @@
         variant="ghost"
         color="gray"
         square
-        :icon="isDark ? 'Sun' : 'Moon'"
+        :icon="isDark ? Sun : Moon"
         aria-label="Toggle theme"
         @click="toggleColorMode"
       />
@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { Sun, Moon } from 'lucide-vue-next'
+import { Sun, Moon, Settings, LogOut } from 'lucide-vue-next'
 
 const colorMode = useColorMode()
 const isDark = computed(() => colorMode.value === 'dark')
@@ -48,12 +48,12 @@ const fallbackName = computed(() => {
 const userMenuItems = [
   [{
     label: 'Settings',
-    icon: 'Settings',
+    icon: Settings,
     click: () => navigateTo('/settings/profile')
   }],
   [{
     label: 'Logout',
-    icon: 'LogOut',
+    icon: LogOut,
     click: () => logout()
   }]
 ]

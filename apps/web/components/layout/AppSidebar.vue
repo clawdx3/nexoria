@@ -71,6 +71,7 @@
 import {
   LayoutDashboard,
   CheckCircle,
+  FileCheck,
   MessageSquare,
   Settings,
   Bot
@@ -85,7 +86,7 @@ const topNav = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard },
   { label: 'Chat', to: '/', icon: MessageSquare },
   { label: 'Tasks', to: '/tasks', icon: CheckCircle },
-  { label: 'Approvals', to: '/approvals', icon: CheckCircle }
+  { label: 'Approvals', to: '/approvals', icon: FileCheck }
 ]
 
 const bottomNav = [
