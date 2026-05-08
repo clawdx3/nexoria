@@ -83,21 +83,38 @@
                   <span style="font-size:11px;color:var(--muted);">just now</span>
                 </div>
                 <div style="font-size:14px;line-height:1.55;white-space:pre-wrap;">{{ msg.content }}</div>
-                <button
+                <div
                   v-if="msg.actionCard"
-                  style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg-sunk);display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;"
-                  @click="openActionCard(msg.actionCard)"
+                  style="margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--bg-sunk);"
                 >
-                  <span style="width:28px;height:28px;border-radius:8px;background:var(--accent-soft);color:var(--accent-soft-ink);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <CheckSquare v-if="msg.actionCard.type === 'task'" :size="14" />
-                    <Shield v-else :size="14" />
-                  </span>
-                  <div style="flex:1;min-width:0;">
-                    <div style="font-size:11px;color:var(--muted);">{{ msg.actionCard.type === 'task' ? 'Task' : 'Approval' }} created</div>
-                    <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ msg.actionCard.title }}</div>
+                  <div style="display:flex;align-items:flex-start;gap:12px;">
+                    <span style="width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent-soft-ink);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+                      <CheckSquare v-if="msg.actionCard.type === 'task'" :size="14" />
+                      <Shield v-else :size="14" />
+                    </span>
+                    <div style="flex:1;min-width:0;">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span class="text-tiny">{{ msg.actionCard.type === 'task' ? 'Task' : 'Approval' }}</span>
+                        <span class="nx-tag dot" :class="actionCardTone(msg.actionCard.status)">{{ String(msg.actionCard.status).replace('_', ' ') }}</span>
+                      </div>
+                      <div style="font-size:13.5px;font-weight:600;line-height:1.35;">{{ msg.actionCard.title }}</div>
+                      <div v-if="msg.actionCard.description" style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ msg.actionCard.description }}</div>
+                    </div>
                   </div>
-                  <span class="nx-tag dot" :class="actionCardTone(msg.actionCard.status)">{{ String(msg.actionCard.status).replace('_', ' ') }}</span>
-                </button>
+                  <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:10px;flex-wrap:wrap;">
+                    <template v-if="msg.actionCard.type === 'approval' && msg.actionCard.status === 'pending'">
+                      <button class="nx-btn nx-btn-ghost nx-btn-sm" :disabled="!!decidingId" @click="decideApproval(msg.actionCard, 'reject')">
+                        <X :size="12" /> Reject
+                      </button>
+                      <button class="nx-btn nx-btn-accent nx-btn-sm" :disabled="!!decidingId" @click="decideApproval(msg.actionCard, 'approve')">
+                        <Check :size="12" /> Approve
+                      </button>
+                    </template>
+                    <button class="nx-btn nx-btn-soft nx-btn-sm" @click="openActionCard(msg.actionCard)">
+                      <Eye :size="12" /> {{ msg.actionCard.type === 'approval' ? 'Review' : 'Open task' }}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </template>
@@ -178,7 +195,7 @@
 </template>
 
 <script setup lang="ts">
-import { Plus, Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield } from 'lucide-vue-next'
+import { Plus, Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield, Check, X, Eye } from 'lucide-vue-next'
 import { File as FileIcon } from 'lucide-vue-next'
 
 definePageMeta({ middleware: 'auth' })
@@ -243,6 +260,21 @@ watch(() => chatStore.messages.length, async () => {
   await nextTick()
   if (scrollRef.value) scrollRef.value.scrollTop = scrollRef.value.scrollHeight
 })
+
+const decidingId = ref<string | null>(null)
+const { approve, reject } = useApprovals()
+
+async function decideApproval (card: any, outcome: 'approve' | 'reject') {
+  if (!card || decidingId.value) return
+  decidingId.value = card.id
+  try {
+    if (outcome === 'approve') await approve(card.id)
+    else await reject(card.id)
+    card.status = outcome === 'approve' ? 'approved' : 'rejected'
+  } finally {
+    decidingId.value = null
+  }
+}
 
 function openActionCard (card: any) {
   if (card.type === 'task') navigateTo('/tasks')
