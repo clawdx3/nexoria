@@ -50,7 +50,7 @@ services:
       retries: 10
 
   minio-init:
-    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: nexoria_minio_init
     depends_on:
       minio:
@@ -206,9 +206,21 @@ services:
     # PROXY_PASSWORD: ${PROXY_PASSWORD}
     # restart: unless-stopped
 
+  openclaw-volume-init:
+    image: alpine:3.19
+    container_name: nexoria_openclaw_volume_init
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /workspace /config && chown -R 1000:1000 /workspace /config && chmod -R u=rwX,go=rX /workspace /config"]
+    volumes:
+      - openclaw_workspace:/workspace
+      - openclaw_config:/config
+
   openclaw-gateway:
     image: ghcr.io/openclaw/openclaw:latest
     container_name: nexoria_openclaw_gateway
+    depends_on:
+      openclaw-volume-init:
+        condition: service_completed_successfully
     environment:
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-dev-openclaw-token-change-me}
       OPENCLAW_GATEWAY_AUTH_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-dev-openclaw-token-change-me}
@@ -403,6 +415,8 @@ services:
         condition: service_started
       openclaw-gateway:
         condition: service_healthy
+      openclaw-volume-init:
+        condition: service_completed_successfully
     volumes:
       - openclaw_config:/openclaw-config
       - openclaw_workspace:/openclaw-workspace
