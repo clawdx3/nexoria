@@ -1,250 +1,157 @@
 <template>
-  <div class="min-h-full bg-slate-100 dark:bg-slate-950">
-    <div class="border-b border-slate-200 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-950">
-      <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-            <Activity class="h-3.5 w-3.5" />
-            Command center
-          </div>
-          <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">
-            Run the workspace from one screen
-          </h1>
-          <p class="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
-            Agent chat, open tasks, approvals, and operational memory stay visible while work moves.
-          </p>
-        </div>
+  <div class="nx-page-wide" style="max-width:1240px;margin:0 auto;padding:28px 32px 80px;">
 
-        <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <div v-for="metric in metrics" :key="metric.label" class="min-w-[136px] rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/70">
-            <div class="text-[11px] font-medium uppercase tracking-wide text-slate-500">{{ metric.label }}</div>
-            <div class="mt-1 flex items-end justify-between gap-3">
-              <span class="text-xl font-semibold text-slate-950 dark:text-white">{{ metric.value }}</span>
-              <span :class="['text-xs font-medium', metric.tone]">{{ metric.delta }}</span>
-            </div>
+    <!-- Greeting -->
+    <div style="margin-bottom:26px;">
+      <div class="text-tiny" style="margin-bottom:8px;">{{ todayLabel }}</div>
+      <div class="nx-h-display" style="font-size:30px;">
+        Good morning, {{ firstName }}.
+        <span style="color:var(--muted);">{{ pendingCount }} thing{{ pendingCount === 1 ? '' : 's' }} need{{ pendingCount === 1 ? 's' : '' }} you today.</span>
+      </div>
+    </div>
+
+    <!-- Quick ask -->
+    <div class="nx-surface" style="padding:14px;margin-bottom:24px;">
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <span style="width:36px;height:36px;border-radius:10px;background:var(--accent);color:var(--accent-ink);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;letter-spacing:-0.02em;flex-shrink:0;">TL</span>
+        <div style="flex:1;">
+          <button @click="navigateTo('/chat')" style="display:block;width:100%;text-align:left;padding:8px 4px;color:var(--muted);font-size:14px;">
+            Ask Team Lead anything — "schedule 5 posts for next week", "summarize last week's results"…
+          </button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+            <button
+              v-for="p in starterPrompts"
+              :key="p"
+              class="nx-btn nx-btn-soft nx-btn-sm"
+              style="height:26px;"
+              @click="navigateTo('/chat')"
+            >{{ p }}</button>
           </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="nx-icon-btn bordered" title="Attach"><Paperclip :size="14" /></button>
+          <button class="nx-icon-btn bordered" title="Voice"><Mic :size="14" /></button>
+          <button class="nx-btn nx-btn-accent nx-btn-sm" @click="navigateTo('/chat')">
+            <Send :size="13" /> Ask
+          </button>
         </div>
       </div>
     </div>
 
-    <div class="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.85fr)] 2xl:grid-cols-[minmax(0,1.35fr)_420px_360px]">
-      <section class="flex min-h-[650px] flex-col rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-        <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-          <div class="flex items-center gap-3">
-            <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700 dark:bg-cyan-950/70 dark:text-cyan-300">
-              <Bot class="h-4 w-4" />
+    <!-- Main grid -->
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;">
+
+      <!-- Inbox -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="nx-h-title">Inbox</div>
+            <span class="nx-tag accent">{{ allItems.length }}</span>
+          </div>
+          <div class="nx-seg">
+            <button :class="{ on: filter === 'now' }" @click="filter = 'now'">Now · {{ nowItems.length }}</button>
+            <button :class="{ on: filter === 'today' }" @click="filter = 'today'">Today · {{ todayItems.length }}</button>
+            <button :class="{ on: filter === 'all' }" @click="filter = 'all'">All</button>
+          </div>
+        </div>
+
+        <div class="nx-surface" style="overflow:hidden;">
+          <div v-if="visibleItems.length === 0" style="padding:32px;text-align:center;">
+            <div class="nx-h-heading" style="margin-bottom:4px;">You're caught up</div>
+            <div style="font-size:13px;color:var(--muted);">Nothing in this filter. Nice work.</div>
+          </div>
+          <button
+            v-for="(item, i) in visibleItems"
+            :key="item.id"
+            style="display:grid;grid-template-columns:auto auto 1fr auto auto;gap:12px;align-items:center;width:100%;padding:14px 16px;text-align:left;transition:background .12s;"
+            :style="{ borderBottom: i < visibleItems.length - 1 ? '1px solid var(--line)' : 'none' }"
+            @mouseenter="(e: MouseEvent) => (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'"
+            @mouseleave="(e: MouseEvent) => (e.currentTarget as HTMLElement).style.background = ''"
+            @click="navigateTo(item.kind === 'approval' ? '/approvals' : '/tasks')"
+          >
+            <span :style="kindIconStyle(item.kind)" style="width:32px;height:32px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <Shield v-if="item.kind === 'approval'" :size="15" />
+              <CheckSquare v-else-if="item.kind === 'task'" :size="15" />
+              <Brain v-else :size="15" />
             </span>
+            <NxAvatar :name="item.agentName" :color="item.agentColor" />
+            <div style="min-width:0;">
+              <div style="font-size:14px;font-weight:500;margin-bottom:2px;">{{ item.title }}</div>
+              <div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.preview }}</div>
+            </div>
+            <span v-if="item.status" class="nx-tag" :class="statusTone(item.status)">{{ item.status }}</span>
+            <span style="font-size:11px;color:var(--muted);font-family:var(--font-mono);width:32px;text-align:right;">{{ item.time }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right rail -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <!-- Agents -->
+        <div class="nx-surface" style="overflow:hidden;">
+          <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);">
             <div>
-              <h2 class="text-sm font-semibold text-slate-950 dark:text-white">Team Lead</h2>
-              <p class="text-xs text-slate-500">Orchestrates agent work and creates follow-up tasks.</p>
+              <div class="nx-h-heading">Active agents</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">{{ enabledAgents.length }} of {{ allAgents.length }} enabled</div>
             </div>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" @click="navigateTo('/settings/agents')">Manage</button>
           </div>
-          <div class="flex items-center gap-3">
-            <div class="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 dark:border-slate-800">
-              <ServerCog class="h-4 w-4 text-slate-500" />
-              <span class="text-xs font-medium text-slate-600 dark:text-slate-300">OpenClaw</span>
-              <UToggle v-model="useOpenClaw" size="sm" />
+          <button
+            v-for="(a, i) in allAgents.slice(0, 5)"
+            :key="a.id"
+            style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;text-align:left;transition:background .12s;"
+            :style="{ borderTop: i === 0 ? 'none' : '1px solid var(--line)', opacity: a.isEnabled ? 1 : 0.5 }"
+            @mouseenter="(e: MouseEvent) => (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'"
+            @mouseleave="(e: MouseEvent) => (e.currentTarget as HTMLElement).style.background = ''"
+            @click="navigateTo(`/chat/${a.id}`)"
+          >
+            <NxAvatar :name="a.name" :color="agentColor(a)" />
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:500;">{{ a.name }}</div>
+              <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.role || 'Agent' }}</div>
             </div>
+            <span v-if="a.isEnabled" class="nx-live-dot" />
+            <span v-else style="width:6px;height:6px;border-radius:50%;background:var(--line-strong);" />
+          </button>
+          <div v-if="allAgents.length === 0" style="padding:24px;text-align:center;font-size:13px;color:var(--muted);">
+            No agents yet. <button style="color:var(--accent);" @click="navigateTo('/settings/agents')">Add one →</button>
           </div>
         </div>
 
-        <div ref="scrollRef" class="flex-1 overflow-y-auto px-5 py-5">
-          <div v-if="chatStore.messages.length === 0" class="grid h-full place-items-center">
-            <div class="max-w-xl text-center">
-              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                <Command class="h-5 w-5" />
-              </div>
-              <h3 class="mt-4 text-base font-semibold text-slate-950 dark:text-white">What needs to move today?</h3>
-              <p class="mt-2 text-sm text-slate-500">
-                Ask the orchestrator to draft tasks, inspect approvals, summarize memory, or run an agent workflow.
-              </p>
-              <div class="mt-5 grid gap-2 text-left sm:grid-cols-2">
-                <button
-                  v-for="prompt in starterPrompts"
-                  :key="prompt"
-                  class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 transition hover:border-cyan-300 hover:text-cyan-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-cyan-800 dark:hover:text-cyan-300"
-                  @click="sendPrompt(prompt)"
-                >
-                  {{ prompt }}
-                </button>
-              </div>
-            </div>
+        <!-- Activity -->
+        <div class="nx-surface" style="overflow:hidden;">
+          <div style="padding:14px 16px;border-bottom:1px solid var(--line);">
+            <div class="nx-h-heading">Today's activity</div>
           </div>
-
-          <div v-else class="space-y-5">
-            <ChatMessage
-              v-for="msg in chatStore.messages"
-              :key="msg.id"
-              :role="msg.role"
-              :content="msg.content"
-              :agent-name="msg.agentName"
-              :action-card="msg.actionCard"
-            />
-            <div v-if="chatStore.isLoading" class="flex items-center gap-2 text-sm text-slate-500">
-              <CommonLoadingSpinner size="sm" />
-              <span>{{ useOpenClaw ? 'OpenClaw is working...' : 'Agent runtime is working...' }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="border-t border-slate-200 p-4 dark:border-slate-800">
-          <div class="flex items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
-            <UTextarea
-              v-model="message"
-              placeholder="Ask Nexoria to run an agent, draft a task, or review an approval..."
-              :rows="1"
-              :maxrows="5"
-              autoresize
-              class="min-h-[38px] flex-1"
-              :disabled="chatStore.isLoading"
-              @keydown="onKeydown"
-            />
-            <UButton color="cyan" :disabled="!message.trim() || chatStore.isLoading" class="h-9 gap-2" @click="sendMessage">
-              <Send class="h-4 w-4" />
-              Send
-            </UButton>
-          </div>
-        </div>
-      </section>
-
-      <section class="space-y-4">
-        <div class="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-          <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-            <div>
-              <h2 class="text-sm font-semibold text-slate-950 dark:text-white">Task queue</h2>
-              <p class="text-xs text-slate-500">{{ activeTasks.length }} active / {{ allTasks.length }} total</p>
-            </div>
-            <UButton size="xs" variant="ghost" color="gray" @click="navigateTo('/tasks')">View all</UButton>
-          </div>
-          <div v-if="taskRows.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
-            No tasks in this workspace yet.
-          </div>
-          <div v-else class="divide-y divide-slate-100 dark:divide-slate-800">
-            <div v-for="task in taskRows" :key="task.id" class="px-4 py-3">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="truncate text-sm font-medium text-slate-950 dark:text-white">{{ task.title }}</div>
-                  <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    <span>{{ task.owner }}</span>
-                    <span class="h-1 w-1 rounded-full bg-slate-300"></span>
-                    <span>{{ task.due }}</span>
-                  </div>
-                </div>
-                <span :class="['shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold', statusClass(task.status)]">
-                  {{ task.statusLabel }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-          <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-            <div>
-              <h2 class="text-sm font-semibold text-slate-950 dark:text-white">Pending approvals</h2>
-              <p class="text-xs text-slate-500">Items waiting for a human decision</p>
-            </div>
-            <UButton size="xs" variant="ghost" color="gray" @click="navigateTo('/approvals')">Review</UButton>
-          </div>
-          <div v-if="approvalRows.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
-            No approvals are waiting.
-          </div>
-          <div v-else class="divide-y divide-slate-100 dark:divide-slate-800">
-            <div v-for="approval in approvalRows" :key="approval.id" class="px-4 py-3">
-              <div class="flex items-start gap-3">
-                <span :class="['mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', approval.iconBg]">
-                  <component :is="approval.icon" class="h-4 w-4" />
-                </span>
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm font-medium text-slate-950 dark:text-white">{{ approval.title }}</div>
-                  <div class="mt-1 text-xs text-slate-500">{{ approval.meta }}</div>
-                </div>
-                <span class="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
-                  Pending
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <aside class="space-y-4 xl:col-span-2 2xl:col-span-1">
-        <div class="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-          <div class="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-            <h2 class="text-sm font-semibold text-slate-950 dark:text-white">Active agents</h2>
-            <p class="text-xs text-slate-500">{{ agentRows.length }} available in this workspace</p>
-          </div>
-          <div class="divide-y divide-slate-100 dark:divide-slate-800">
-            <button
-              v-for="agent in agentRows"
-              :key="agent.id"
-              class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900"
-              @click="prefillDelegationPrompt(agent)"
+          <div style="padding:8px 14px 14px;">
+            <div
+              v-for="(item, i) in activityItems"
+              :key="i"
+              style="display:flex;gap:10px;padding:8px 0;"
             >
-              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                <component :is="agent.icon" class="h-4 w-4" />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm font-medium text-slate-950 dark:text-white">{{ agent.name }}</span>
-                <span class="block truncate text-xs text-slate-500">{{ agent.description }}</span>
-              </span>
-              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            </button>
+              <span style="font-size:11px;font-family:var(--font-mono);color:var(--muted);width:56px;flex-shrink:0;padding-top:2px;">{{ item.time }}</span>
+              <NxAvatar :name="item.agentName" :color="item.agentColor" />
+              <span style="font-size:13px;flex:1;">{{ item.title }}</span>
+            </div>
+            <div v-if="activityItems.length === 0" style="padding:16px 0;font-size:13px;color:var(--muted);">No activity yet today.</div>
           </div>
         </div>
 
-        <div class="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-          <div class="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-            <h2 class="text-sm font-semibold text-slate-950 dark:text-white">Memory and activity</h2>
-            <p class="text-xs text-slate-500">Recent context the runtime can use</p>
-          </div>
-          <div class="px-4 py-4">
-            <div class="space-y-4">
-              <div v-for="item in activityRows" :key="item.title" class="flex gap-3">
-                <div class="flex flex-col items-center">
-                  <span :class="['flex h-7 w-7 items-center justify-center rounded-lg', item.bg]">
-                    <component :is="item.icon" class="h-3.5 w-3.5" />
-                  </span>
-                  <span class="mt-2 h-full w-px bg-slate-200 last:hidden dark:bg-slate-800"></span>
-                </div>
-                <div class="min-w-0 pb-3">
-                  <div class="text-sm font-medium text-slate-950 dark:text-white">{{ item.title }}</div>
-                  <div class="mt-1 text-xs leading-5 text-slate-500">{{ item.body }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import {
-  Activity,
-  Bot,
-  Brain,
-  CheckCircle2,
-  Command,
-  FileCheck2,
-  Gauge,
-  Send,
-  ServerCog,
-  ShieldCheck
-} from 'lucide-vue-next'
-import type { Task } from '~/types'
+import { Shield, CheckSquare, Brain, Paperclip, Mic, Send } from 'lucide-vue-next'
 
 definePageMeta({ middleware: 'auth' })
 
-const chatStore = useChatStore()
-const { enabledAgents, fetchAgents } = useAgent()
+const { user } = useAuth()
+const { agents: rawAgents, fetchAgents } = useAgent()
 const { allTasks, fetchTasks } = useTasks()
-const { approvals, fetchApprovals } = useApprovals()
-
-const message = ref('')
-const useOpenClaw = ref(false)
-const scrollRef = ref<HTMLDivElement | null>(null)
+const { approvals, pendingApprovals, fetchApprovals } = useApprovals()
 
 onMounted(() => {
   void fetchAgents()
@@ -252,126 +159,91 @@ onMounted(() => {
   void fetchApprovals()
 })
 
+const firstName = computed(() => user.value?.firstName || 'there')
+
+const todayLabel = computed(() => {
+  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+})
+
+const agentColorPalette = ['#C25B3F', '#7C5CC2', '#3F8FC2', '#5C9C6E', '#C29A3F']
+function agentColor (a: any): string {
+  if (a.metadata?.color) return a.metadata.color
+  const idx = (a.name || '').charCodeAt(0) % agentColorPalette.length
+  return agentColorPalette[idx]
+}
+
+const allAgents = computed(() => rawAgents.value || [])
+const enabledAgents = computed(() => allAgents.value.filter((a: any) => a.isEnabled !== false))
+
+// Build inbox items from real approvals + tasks
+const allItems = computed(() => {
+  const items: any[] = []
+  for (const a of pendingApprovals.value.slice(0, 3)) {
+    items.push({
+      id: 'a-' + a.id,
+      kind: 'approval',
+      title: a.title,
+      preview: a.description || '',
+      agentName: a.metadata?.agentName || 'Agent',
+      agentColor: agentColorPalette[0],
+      status: 'pending',
+      time: 'now',
+      priority: 'now',
+    })
+  }
+  for (const t of (allTasks.value || []).slice(0, 4)) {
+    items.push({
+      id: 't-' + t.id,
+      kind: 'task',
+      title: t.title,
+      preview: t.description || '',
+      agentName: t.metadata?.agentName || 'Agent',
+      agentColor: agentColorPalette[2],
+      status: t.status === 'done' ? 'done' : t.status === 'in_progress' ? 'running' : 'pending',
+      time: 'today',
+      priority: t.status === 'in_progress' ? 'now' : 'today',
+    })
+  }
+  return items
+})
+
+const filter = ref<'now' | 'today' | 'all'>('now')
+const nowItems = computed(() => allItems.value.filter((i) => i.priority === 'now'))
+const todayItems = computed(() => allItems.value.filter((i) => i.priority === 'today'))
+const visibleItems = computed(() => {
+  if (filter.value === 'now') return nowItems.value
+  if (filter.value === 'today') return todayItems.value
+  return allItems.value
+})
+
+const pendingCount = computed(() => pendingApprovals.value.length)
+
+const activityItems = computed(() => {
+  return (allTasks.value || []).slice(0, 5).map((t: any) => ({
+    time: new Date(t.updatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    title: t.title,
+    agentName: t.metadata?.agentName || 'Agent',
+    agentColor: agentColorPalette[1],
+  }))
+})
+
 const starterPrompts = [
-  'Summarize open approvals and next actions',
-  'Create a launch checklist for this week',
-  'Find tasks blocked by missing context',
-  'Draft a customer follow-up workflow'
+  'What needs my attention today?',
+  'Plan a 7-day campaign',
+  'Find 3 micro-influencers',
+  'Draft a reply to last week\'s reviews',
 ]
 
-const metrics = computed(() => [
-  { label: 'Active agents', value: agentRows.value.length, delta: '+2', tone: 'text-emerald-600 dark:text-emerald-400' },
-  { label: 'Open tasks', value: activeTasks.value.length, delta: 'Live', tone: 'text-cyan-600 dark:text-cyan-400' },
-  { label: 'Approvals', value: approvalRows.value.length, delta: 'Needs review', tone: 'text-amber-600 dark:text-amber-400' },
-  { label: 'Runtime health', value: '98%', delta: 'Stable', tone: 'text-emerald-600 dark:text-emerald-400' }
-])
-
-const activeTasks = computed(() => (
-  allTasks.value.filter((task: Task) => !['done', 'cancelled'].includes(task.status))
-))
-
-const taskRows = computed(() => {
-  return allTasks.value.slice(0, 5).map((task: Task) => ({
-    id: task.id,
-    title: task.title,
-    owner: task.metadata?.agentName || 'Team Lead',
-    due: task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date',
-    status: task.status,
-    statusLabel: task.status.replace('_', ' ')
-  }))
-})
-
-const approvalRows = computed(() => {
-  return approvals.value.filter((approval: any) => approval.status === 'pending').slice(0, 4).map((approval: any) => ({
-    id: approval.id,
-    title: approval.title,
-    meta: approval.description || approval.type || 'Approval request',
-    icon: FileCheck2,
-    iconBg: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-  }))
-})
-
-const agentRows = computed(() => {
-  const realAgents = enabledAgents.value.slice(0, 5).map((agent: any) => ({
-    id: agent.id,
-    name: agent.name,
-    description: agent.description || agent.role || 'Workspace agent',
-    icon: Bot
-  }))
-
-  return realAgents.length > 0 ? realAgents : [
-    { id: 'demo-agent-1', name: 'Team Lead', description: 'Routes work to specialist agents', icon: Bot },
-    { id: 'demo-agent-2', name: 'Operations Agent', description: 'Tracks tasks and approvals', icon: Gauge },
-    { id: 'demo-agent-3', name: 'Memory Agent', description: 'Maintains workspace context', icon: Brain },
-    { id: 'demo-agent-4', name: 'Systems Agent', description: 'Checks integrations and tools', icon: ShieldCheck }
-  ]
-})
-
-const activityRows = [
-  {
-    title: 'Daily memory assembled',
-    body: 'Customer tone, active workflows, and unresolved approvals were added to runtime context.',
-    icon: Brain,
-    bg: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300'
-  },
-  {
-    title: 'Approval guard active',
-    body: 'Risk level 2 and 3 tool calls require human confirmation before execution.',
-    icon: ShieldCheck,
-    bg: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-  },
-  {
-    title: 'Task queue normalized',
-    body: 'Open work is grouped by mission and prioritized by due date.',
-    icon: CheckCircle2,
-    bg: 'bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300'
-  }
-]
-
-function statusClass (status: string): string {
-  switch (status) {
-    case 'done':
-      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-    case 'in_progress':
-      return 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300'
-    case 'cancelled':
-      return 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300'
-    default:
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-  }
+function kindIconStyle (kind: string) {
+  if (kind === 'approval') return { background: 'var(--bg-sunk)', color: 'var(--accent)' }
+  if (kind === 'task') return { background: 'var(--bg-sunk)', color: 'var(--info)' }
+  return { background: 'var(--bg-sunk)', color: 'var(--ink-2)' }
 }
 
-function sendPrompt (prompt: string): void {
-  message.value = prompt
-  sendMessage()
+function statusTone (status: string) {
+  if (status === 'pending') return 'warn'
+  if (status === 'done') return 'ok'
+  if (status === 'running') return 'info'
+  return ''
 }
-
-function sendMessage (): void {
-  const content = message.value.trim()
-  if (!content || chatStore.isLoading) return
-  void chatStore.sendMessage(content, 'orchestrator', useOpenClaw.value ? 'openclaw' : 'nexoria')
-  message.value = ''
-}
-
-function prefillDelegationPrompt (agent: { id: string; name: string }): void {
-  if (agent.id.startsWith('demo-')) {
-    void navigateTo('/settings/agents')
-    return
-  }
-  message.value = `Ask ${agent.name} to `
-}
-
-function onKeydown (event: KeyboardEvent): void {
-  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-    event.preventDefault()
-    sendMessage()
-  }
-}
-
-watch(() => chatStore.messages.length, async () => {
-  await nextTick()
-  if (scrollRef.value) {
-    scrollRef.value.scrollTop = scrollRef.value.scrollHeight
-  }
-})
 </script>
