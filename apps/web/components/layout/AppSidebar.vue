@@ -114,19 +114,25 @@ import {
 
 const { agents, isLoading, fetchAgents } = useAgent()
 const route = useRoute()
+const { pendingApprovals, fetchApprovals } = useApprovals()
+const tasksStore = useTasksStore()
 
-onMounted(() => { void fetchAgents() })
+onMounted(() => {
+  void fetchAgents()
+  void fetchApprovals()
+  void tasksStore.fetchTasks()
+})
 
-const topNav = [
+const topNav = computed(() => [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard },
   { label: 'Agent Studio', to: '/settings/agents', icon: SlidersHorizontal },
-  { label: 'Tasks', to: '/tasks', icon: CheckCircle },
-  { label: 'Approvals', to: '/approvals', icon: FileCheck, badge: '3' },
+  { label: 'Tasks', to: '/tasks', icon: CheckCircle, badge: tasksStore.tasks.length || undefined },
+  { label: 'Approvals', to: '/approvals', icon: FileCheck, badge: pendingApprovals.value.length || undefined },
   { label: 'Memory', to: '/settings/memory', icon: Brain },
   { label: 'Runtime', to: '/settings/runtime', icon: ServerCog },
   { label: 'Integrations', to: '/settings/integrations', icon: Plug },
   { label: 'Chat', to: '/', icon: MessageSquare }
-]
+])
 
 const bottomNav = [
   { label: 'Settings', to: '/settings', icon: Settings }
