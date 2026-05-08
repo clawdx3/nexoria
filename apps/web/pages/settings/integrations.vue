@@ -56,8 +56,8 @@
           :class="item.connected ? 'nx-btn-soft' : 'nx-btn-accent'"
           @click="openOAuth(item)"
         >
-          <Settings v-if="item.connected" :size="12" /> Manage
-          <Link v-else :size="12" /> Connect
+          <template v-if="item.connected"><Settings :size="12" /> Manage</template>
+          <template v-else><Link :size="12" /> Connect</template>
         </button>
       </div>
     </div>
