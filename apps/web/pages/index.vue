@@ -238,7 +238,7 @@ import type { Task } from '~/types'
 definePageMeta({ middleware: 'auth' })
 
 const chatStore = useChatStore()
-const { agents, fetchAgents } = useAgent()
+const { enabledAgents, fetchAgents } = useAgent()
 const { allTasks, fetchTasks } = useTasks()
 const { approvals, fetchApprovals } = useApprovals()
 
@@ -292,7 +292,7 @@ const approvalRows = computed(() => {
 })
 
 const agentRows = computed(() => {
-  const realAgents = agents.value.slice(0, 5).map((agent: any) => ({
+  const realAgents = enabledAgents.value.slice(0, 5).map((agent: any) => ({
     id: agent.id,
     name: agent.name,
     description: agent.description || agent.role || 'Workspace agent',

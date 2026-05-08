@@ -8,6 +8,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { SocialPostDraftsService } from '../social-post-drafts/social-post-drafts.service';
 import { ManagedRuntimeService } from '../managed-runtime/managed-runtime.service';
 import { AgentProfilesService } from '../agent-profiles/agent-profiles.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 import { TaskPriority, TaskStatus } from '../../database/entities/task.entity';
 import { SocialPostDraftStatus, SocialPostPlatform } from '../../database/entities/social-post-draft.entity';
 
@@ -32,11 +33,13 @@ export class McpService {
     private readonly socialPostDrafts: SocialPostDraftsService,
     private readonly managedRuntime: ManagedRuntimeService,
     private readonly agentProfiles: AgentProfilesService,
+    private readonly attachments: AttachmentsService,
     private readonly config: ConfigService,
   ) {
     this.registerTaskTools();
     this.registerSocialPostDraftTools();
     this.registerRuntimeDelegationTools();
+    this.registerAttachmentTools();
   }
 
   authenticate(authHeader: string | undefined): void {
@@ -176,7 +179,7 @@ export class McpService {
         if (args.priority) patch.priority = args.priority as TaskPriority;
         if (args.title !== undefined) patch.title = args.title;
         if (args.description !== undefined) patch.description = args.description;
-        return this.tasks.update(args.taskId, patch);
+        return this.tasks.update(args.taskId, args.workspaceId, patch);
       },
     });
   }
@@ -187,10 +190,10 @@ export class McpService {
       description: [
         'Canonical Nexoria tool for creating social media post drafts, especially Facebook post drafts.',
         'Use this from delegated content/specialist execution whenever the assigned work is to create, draft, prepare, write, schedule, or publish a Facebook/social post.',
-        'The main orchestrator should delegate new social/content creation to agentName "Content Creator" with delegate_runtime_job instead of writing final copy or calling this tool directly.',
+        'The main orchestrator should delegate new social/content creation to agentName "Social Media Agent" with delegate_runtime_job instead of writing final copy or calling this tool directly.',
         'This creates a durable draft record in Nexoria. Do not claim a social post draft was created unless this tool returns successfully.',
         'Default to createReviewTask=true for agent-created social drafts so the user can approve them in Nexoria.',
-        'For delegated Content Creator work, include metadata.source="content_creator_runtime" and metadata.createdByAgentRole="content_creator".',
+        'For delegated Social Media Agent work, include metadata.source="social_media_agent_runtime" and metadata.createdByAgentRole="social_media_agent".',
         'Only set createReviewTask=false when the user explicitly asks to save a private draft without review.',
       ].join(' '),
       inputSchema: {
@@ -281,21 +284,24 @@ export class McpService {
   }
 
   private registerRuntimeDelegationTools(): void {
-    this.tools.set('delegate_runtime_job', {
-      name: 'delegate_runtime_job',
+    this.tools.set('enqueue_specialist_job', {
+      name: 'enqueue_specialist_job',
       description: [
-        'Canonical Nexoria tool for offloading background agent work to OpenClaw runtime jobs.',
-        'Use this when the orchestrator decides a specialist agent should work, or when the orchestrator would otherwise do non-trivial work itself.',
-        'For social/content work, create a tracking task first, then call this with agentName "Content Creator" and the created taskId.',
-        'If the orchestrator itself must do the work, set agentProfileId to "orchestrator" so the main chat stays free.',
+        'Canonical Nexoria tool for handing off background work to a specialist agent. This is a Nexoria-level delegation, not OpenClaw\'s sessions_spawn — never call sessions_spawn or /subagents spawn.',
+        'Returns immediately with a queued runtime job. The specialist runs asynchronously; when it finishes, you will receive a follow-up turn in this chat prefixed with "[Nexoria announce]" containing the result. Summarize that result for the user when you see it.',
+        'Use this when the orchestrator decides a specialist should work, or when the orchestrator would otherwise do non-trivial work itself.',
+        'For social/content work, create a tracking task first with create_task, then call this with agentName "Social Media Agent" and the created taskId.',
+        'If the orchestrator itself must do the work, set agentProfileId to "orchestrator" to enqueue a background main-agent run.',
+        'Always pass chatSessionId so the announce-back can be routed to this chat. The chatSessionId is provided in your runtime context.',
         'Do not use this for normal conversation or quick answers.',
       ].join(' '),
       inputSchema: {
         type: 'object',
         properties: {
           workspaceId: { type: 'string', description: 'UUID of the active Nexoria workspace. Use the exact workspaceId supplied in the session context.' },
+          chatSessionId: { type: 'string', description: 'UUID of the current Nexoria chat session. Use the chatSessionId supplied in the runtime context so the specialist\'s result is announced back to this chat.' },
           agentProfileId: { type: 'string', description: 'Target agent profile id. Use "orchestrator" to spawn a background main-agent run.' },
-          agentName: { type: 'string', description: 'Optional target built-in or workspace agent name, e.g. "Content Creator". Used when agentProfileId is not known.' },
+          agentName: { type: 'string', description: 'Optional target built-in or workspace agent name, e.g. "Social Media Agent". Used when agentProfileId is not known.' },
           taskId: { type: 'string', description: 'Optional Nexoria task id linked to this runtime job.' },
           prompt: { type: 'string', description: 'Clear work instructions for the delegated background agent.' },
           type: { type: 'string', enum: ['openclaw_task', 'create_file', 'research', 'browser_task'], description: 'Runtime job type. Use openclaw_task unless another type is clearly required.' },
@@ -306,14 +312,15 @@ export class McpService {
       execute: async (args) => {
         const agentProfileId = await this.resolveDelegatedAgentId(args.workspaceId, args.agentProfileId, args.agentName);
         const agentName = typeof args.agentName === 'string' ? args.agentName : undefined;
-        const isContentCreator = agentName?.trim().toLowerCase() === 'content creator';
-        const delegatedPrompt = isContentCreator
+        const normalizedAgentName = agentName?.trim().toLowerCase();
+        const isSocialMediaAgent = normalizedAgentName === 'social media agent' || normalizedAgentName === 'content creator';
+        const delegatedPrompt = isSocialMediaAgent
           ? [
-              'You are Nexoria Content Creator working on a delegated background job.',
+              'You are Nexoria Social Media Agent working on a delegated background job.',
               `Active Nexoria workspaceId: ${args.workspaceId}`,
               'Write the requested social/content draft yourself, then persist it with the Nexoria MCP create_social_post_draft tool.',
               'For Facebook posts, use platform "facebook". Set createReviewTask=true unless the user explicitly asked for a private draft.',
-              'Set metadata.source="content_creator_runtime" and metadata.createdByAgentRole="content_creator" when creating the draft.',
+              'Set metadata.source="social_media_agent_runtime" and metadata.createdByAgentRole="social_media_agent" when creating the draft.',
               'Do not only return the copy in chat; the durable draft and approval are the source of truth.',
               '',
               args.prompt,
@@ -323,21 +330,23 @@ export class McpService {
           agentProfileId,
           type: args.type ?? 'openclaw_task',
           input: {
-            source: 'mcp:delegate_runtime_job',
+            source: 'mcp:enqueue_specialist_job',
             taskId: args.taskId,
             workspaceId: args.workspaceId,
+            parentChatSessionId: typeof args.chatSessionId === 'string' ? args.chatSessionId : undefined,
             delegatedAgentName: agentName,
             prompt: delegatedPrompt,
             metadata: {
               ...(args.metadata ?? {}),
               delegatedAgentName: agentName,
-              delegatedByTool: 'mcp:delegate_runtime_job',
+              delegatedByTool: 'mcp:enqueue_specialist_job',
+              parentChatSessionId: typeof args.chatSessionId === 'string' ? args.chatSessionId : undefined,
             },
           },
         });
         if (args.taskId) {
           const task = await this.tasks.findOne(args.taskId);
-          await this.tasks.update(args.taskId, {
+          await this.tasks.update(args.taskId, args.workspaceId, {
             status: task.status === 'pending' ? 'in_progress' : task.status as TaskStatus,
             metadata: {
               ...(task.metadata ?? {}),
@@ -353,15 +362,205 @@ export class McpService {
     });
   }
 
+  private registerAttachmentTools(): void {
+    this.tools.set('list_attachments', {
+      name: 'list_attachments',
+      description: 'List durable Nexoria attachments in a workspace. Use this to find files by task, chat session, runtime job, draft, filename, source, uploader, or agent before referring to or refetching a file.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string', description: 'UUID of the active Nexoria workspace.' },
+          taskId: { type: 'string' },
+          runtimeChatSessionId: { type: 'string' },
+          runtimeJobId: { type: 'string' },
+          draftId: { type: 'string' },
+          filename: { type: 'string' },
+          source: { type: 'string', enum: ['user_upload', 'agent_upload', 'runtime', 'reference'] },
+          createdByAgentProfileId: { type: 'string' },
+          uploadedByUserId: { type: 'string' },
+          mimeType: { type: 'string' },
+        },
+        required: ['workspaceId'],
+      },
+      execute: async (args) => {
+        const attachments = await this.attachments.list(args.workspaceId, {
+          taskId: args.taskId,
+          runtimeChatSessionId: args.runtimeChatSessionId,
+          runtimeJobId: args.runtimeJobId,
+          draftId: args.draftId,
+          filename: args.filename,
+          source: args.source,
+          createdByAgentProfileId: args.createdByAgentProfileId,
+          uploadedByUserId: args.uploadedByUserId,
+          mimeType: args.mimeType,
+        });
+        return { count: attachments.length, attachments };
+      },
+    });
+
+    this.tools.set('get_attachment', {
+      name: 'get_attachment',
+      description: 'Get a durable Nexoria attachment plus a short-lived signed download URL. Use this before reading or reusing a file.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string', description: 'UUID of the active Nexoria workspace.' },
+          attachmentId: { type: 'string', description: 'Attachment id returned by Nexoria.' },
+        },
+        required: ['workspaceId', 'attachmentId'],
+      },
+      execute: async (args) => {
+        const result = await this.attachments.getDownloadUrl(args.workspaceId, args.attachmentId);
+        return {
+          attachmentId: result.attachment.id,
+          filename: result.attachment.filename,
+          mimeType: result.attachment.mimeType,
+          sizeBytes: result.attachment.sizeBytes,
+          scope: result.attachment.scope,
+          taskId: result.attachment.taskId,
+          runtimeJobId: result.attachment.runtimeJobId,
+          downloadUrl: result.downloadUrl,
+          downloadUrlExpiresAt: result.expiresAt,
+        };
+      },
+    });
+
+    this.tools.set('create_attachment_reference', {
+      name: 'create_attachment_reference',
+      description: 'Reference an existing Nexoria attachment from another task, chat, draft, approval, or runtime job without duplicating bytes.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string' },
+          attachmentId: { type: 'string' },
+          scope: { type: 'string', enum: ['chat', 'tasks', 'approvals', 'runtime-jobs', 'drafts', 'general'] },
+          scopeId: { type: 'string' },
+          taskId: { type: 'string' },
+          runtimeChatSessionId: { type: 'string' },
+          runtimeJobId: { type: 'string' },
+          approvalId: { type: 'string' },
+          draftId: { type: 'string' },
+          metadata: { type: 'object' },
+        },
+        required: ['workspaceId', 'attachmentId'],
+      },
+      execute: async (args) => this.attachments.reference(args.workspaceId, args),
+    });
+
+    this.tools.set('upload_attachment', {
+      name: 'upload_attachment',
+      description: 'Upload agent-generated file bytes into Nexoria managed storage. Use this whenever you create a file that should be durable or visible to the user.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string' },
+          filename: { type: 'string' },
+          mimeType: { type: 'string' },
+          contentBase64: { type: 'string', description: 'Base64 encoded file bytes.' },
+          createdByAgentProfileId: { type: 'string' },
+          taskId: { type: 'string' },
+          runtimeChatSessionId: { type: 'string' },
+          runtimeJobId: { type: 'string' },
+          draftId: { type: 'string' },
+          metadata: { type: 'object' },
+        },
+        required: ['workspaceId', 'filename', 'mimeType', 'contentBase64'],
+      },
+      execute: async (args) => {
+        const bytes = Buffer.from(args.contentBase64, 'base64');
+        const attachment = await this.attachments.uploadBytes(args.workspaceId, {
+          filename: args.filename,
+          mimeType: args.mimeType,
+          contentBase64: args.contentBase64,
+          sizeBytes: bytes.length,
+          source: 'agent_upload',
+          taskId: args.taskId,
+          runtimeChatSessionId: args.runtimeChatSessionId,
+          runtimeJobId: args.runtimeJobId,
+          draftId: args.draftId,
+          createdByAgentProfileId: args.createdByAgentProfileId,
+          metadata: { ...(args.metadata ?? {}), createdByTool: 'mcp:upload_attachment' },
+        }, { agentProfileId: args.createdByAgentProfileId });
+        return {
+          attachmentId: attachment.id,
+          filename: attachment.filename,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          scope: attachment.scope,
+          taskId: attachment.taskId,
+          runtimeJobId: attachment.runtimeJobId,
+          downloadUrl: attachment.signedDownloadUrl,
+          downloadUrlExpiresAt: attachment.downloadUrlExpiresAt,
+        };
+      },
+    });
+
+    this.tools.set('record_artifact', {
+      name: 'record_artifact',
+      description: 'Record runtime job output bytes as a Nexoria attachment/artifact. Prefer this for files produced during runtime job execution.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string' },
+          filename: { type: 'string' },
+          mimeType: { type: 'string' },
+          contentBase64: { type: 'string' },
+          runtimeJobId: { type: 'string' },
+          createdByAgentProfileId: { type: 'string' },
+          taskId: { type: 'string' },
+          metadata: { type: 'object' },
+        },
+        required: ['workspaceId', 'filename', 'mimeType', 'contentBase64'],
+      },
+      execute: async (args) => {
+        const bytes = Buffer.from(args.contentBase64, 'base64');
+        const attachment = await this.attachments.uploadBytes(args.workspaceId, {
+          filename: args.filename,
+          mimeType: args.mimeType,
+          contentBase64: args.contentBase64,
+          sizeBytes: bytes.length,
+          source: 'runtime',
+          runtimeJobId: args.runtimeJobId,
+          taskId: args.taskId,
+          createdByAgentProfileId: args.createdByAgentProfileId,
+          metadata: { ...(args.metadata ?? {}), createdByTool: 'mcp:record_artifact' },
+        }, { agentProfileId: args.createdByAgentProfileId });
+        return {
+          attachmentId: attachment.id,
+          filename: attachment.filename,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          scope: attachment.scope,
+          taskId: attachment.taskId,
+          runtimeJobId: attachment.runtimeJobId,
+          downloadUrl: attachment.signedDownloadUrl,
+          downloadUrlExpiresAt: attachment.downloadUrlExpiresAt,
+        };
+      },
+    });
+  }
+
   private async resolveDelegatedAgentId(workspaceId: string, agentProfileId?: string, agentName?: string): Promise<string> {
-    if (agentProfileId) return agentProfileId;
+    const agents = await this.agentProfiles.findEnabledByWorkspace(workspaceId);
+    if (agentProfileId) {
+      if (agentProfileId === 'orchestrator') return agentProfileId;
+      if (!agents.some((agent) => agent.id === agentProfileId)) {
+        throw new Error(`Agent ${agentProfileId} is not enabled for this workspace.`);
+      }
+      return agentProfileId;
+    }
     if (!agentName) return 'orchestrator';
     const normalized = agentName.trim().toLowerCase();
     if (normalized === 'orchestrator' || normalized === 'team lead' || normalized === 'main agent') {
       return 'orchestrator';
     }
-    const agents = await this.agentProfiles.findByWorkspace(workspaceId);
-    const match = agents.find((agent) => agent.name.toLowerCase() === normalized);
-    return match?.id ?? 'orchestrator';
+    const match = agents.find((agent) => {
+      const name = agent.name.toLowerCase();
+      return name === normalized || (normalized === 'content creator' && name === 'social media agent');
+    });
+    if (!match) {
+      throw new Error(`Agent "${agentName}" is not enabled for this workspace.`);
+    }
+    return match.id;
   }
 }

@@ -125,6 +125,12 @@ export class RuntimeRunnerController {
     return this.service.registerInstance(dto);
   }
 
+  @Get('bootstrap/manifest')
+  @ApiResponse({ status: 200 })
+  bootstrapManifest(): Promise<any> | any {
+    return this.service.runtimeBootstrapManifest();
+  }
+
   @Post('instances/:instanceKey/heartbeat')
   @ApiResponse({ status: 200 })
   heartbeat(@Param('instanceKey') instanceKey: string, @Body() dto: HeartbeatRuntimeInstanceDto): Promise<any> {

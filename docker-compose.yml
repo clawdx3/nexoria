@@ -31,6 +31,41 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: nexoria_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-nexoria}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-nexoria-minio-secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: nexoria_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-nexoria}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-nexoria-minio-secret}
+      S3_BUCKET: ${S3_BUCKET:-nexoria-artifacts}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb -p local/$$S3_BUCKET || true &&
+      mc anonymous set none local/$$S3_BUCKET
+      "
+
   api:
     build:
       context: .
@@ -59,6 +94,13 @@ services:
       NEXORIA_RUNNER_TOKEN: ${NEXORIA_RUNNER_TOKEN:-dev-runner-token-change-me}
       NEXORIA_MCP_TOKEN: ${NEXORIA_MCP_TOKEN:-dev-mcp-token-change-me}
       ARTIFACT_STORAGE_DIR: /app/storage/artifacts
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-nexoria-artifacts}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-nexoria}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-nexoria-minio-secret}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
     ports:
       - "3000:3000"
     volumes:
@@ -68,6 +110,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     command: ["node", "apps/api/dist/main"]
 
   web:
@@ -375,3 +419,4 @@ volumes:
   openclaw_config:
   openclaw_workspace:
   artifact_storage:
+  minio_data:

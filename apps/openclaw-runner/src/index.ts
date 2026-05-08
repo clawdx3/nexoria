@@ -42,6 +42,20 @@ type DeviceIdentity = {
   privateKeyPem: string;
 };
 
+type RuntimeBootstrapManifest = {
+  version: string;
+  managedPaths: string[];
+  files: Record<string, string>;
+};
+
+type BootstrapSyncState = {
+  version: string | null;
+  hash: string | null;
+  status: 'pending' | 'synced' | 'failed';
+  syncedAt?: string;
+  error?: string;
+};
+
 const config = {
   backendUrl: process.env.NEXORIA_API_URL || 'http://api:3000/api/v1',
   runnerToken: process.env.NEXORIA_RUNNER_TOKEN || 'dev-runner-token-change-me',
@@ -67,6 +81,11 @@ const riskyAgentPatterns = [
 let active = false;
 let chatActive = false;
 let gateway: GatewayRpcClient | null = null;
+let bootstrapSyncState: BootstrapSyncState = {
+  version: null,
+  hash: null,
+  status: 'pending',
+};
 
 main().catch((err) => {
   console.error('[runner] fatal', err);
@@ -77,6 +96,8 @@ async function main(): Promise<void> {
   await fs.mkdir(config.workspaceDir, { recursive: true });
   await fs.mkdir(config.configDir, { recursive: true });
   await waitForRegistration();
+  await syncBootstrapManifest();
+  await heartbeat();
   setInterval(() => void heartbeat(), config.heartbeatMs);
   setInterval(() => void poll(), config.pollMs);
   setInterval(() => void pollChatCommands(), Math.max(500, Math.floor(config.pollMs / 2)));
@@ -107,6 +128,7 @@ async function register(): Promise<void> {
       metadata: {
         workspaceDir: config.workspaceDir,
         configDir: config.configDir,
+        bootstrap: bootstrapSyncState,
       },
     },
   });
@@ -121,9 +143,127 @@ async function heartbeat(): Promise<void> {
       metadata: {
         openclawReady: ready,
         checkedAt: new Date().toISOString(),
+        bootstrap: bootstrapSyncState,
       },
     },
   }).catch((err) => console.warn('[runner] heartbeat failed', err.message));
+}
+
+async function syncBootstrapManifest(): Promise<void> {
+  try {
+    const manifest = await backend<RuntimeBootstrapManifest>('/runner/runtime/bootstrap/manifest');
+    validateBootstrapManifest(manifest);
+    const hash = hashBootstrapManifest(manifest);
+    const markerPath = path.join(config.workspaceDir, '.nexoria-bootstrap.json');
+    const previous = await readBootstrapMarker(markerPath);
+    const needsSync = previous?.version !== manifest.version
+      || previous?.hash !== hash
+      || await hasBootstrapFileDrift(manifest);
+
+    if (!needsSync) {
+      bootstrapSyncState = {
+        version: manifest.version,
+        hash,
+        status: 'synced',
+        syncedAt: previous?.syncedAt || new Date().toISOString(),
+      };
+      console.log(`[runner] bootstrap already synced version=${manifest.version} hash=${hash}`);
+      return;
+    }
+
+    for (const managedPath of manifest.managedPaths) {
+      const content = manifest.files[managedPath];
+      if (typeof content !== 'string') throw new Error(`Bootstrap manifest missing content for ${managedPath}`);
+      const target = safeWorkspaceFile(managedPath);
+      await fs.writeFile(target, content.endsWith('\n') ? content : `${content}\n`, 'utf8');
+    }
+
+    const syncedAt = new Date().toISOString();
+    await fs.writeFile(markerPath, `${JSON.stringify({
+      source: 'nexoria',
+      version: manifest.version,
+      hash,
+      managedPaths: manifest.managedPaths,
+      syncedAt,
+    }, null, 2)}\n`, 'utf8');
+
+    bootstrapSyncState = {
+      version: manifest.version,
+      hash,
+      status: 'synced',
+      syncedAt,
+    };
+    console.log(`[runner] bootstrap synced version=${manifest.version} hash=${hash} files=${manifest.managedPaths.length}`);
+  } catch (err: any) {
+    bootstrapSyncState = {
+      version: null,
+      hash: null,
+      status: 'failed',
+      error: err?.message || 'Bootstrap sync failed.',
+    };
+    console.warn('[runner] bootstrap sync failed', bootstrapSyncState.error);
+  }
+}
+
+function validateBootstrapManifest(manifest: RuntimeBootstrapManifest): void {
+  if (!manifest || typeof manifest.version !== 'string' || !manifest.version) {
+    throw new Error('Bootstrap manifest is missing version.');
+  }
+  if (!Array.isArray(manifest.managedPaths) || manifest.managedPaths.length === 0) {
+    throw new Error('Bootstrap manifest is missing managedPaths.');
+  }
+  if (!manifest.files || typeof manifest.files !== 'object') {
+    throw new Error('Bootstrap manifest is missing files.');
+  }
+  for (const managedPath of manifest.managedPaths) {
+    safeWorkspaceFile(managedPath);
+    if (typeof manifest.files[managedPath] !== 'string') {
+      throw new Error(`Bootstrap manifest has invalid file content for ${managedPath}.`);
+    }
+  }
+}
+
+function hashBootstrapManifest(manifest: RuntimeBootstrapManifest): string {
+  const normalized = {
+    version: manifest.version,
+    managedPaths: [...manifest.managedPaths].sort(),
+    files: Object.fromEntries(Object.entries(manifest.files).sort(([a], [b]) => a.localeCompare(b))),
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
+
+async function readBootstrapMarker(markerPath: string): Promise<{ version?: string; hash?: string; syncedAt?: string } | null> {
+  try {
+    return JSON.parse(await fs.readFile(markerPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function hasBootstrapFileDrift(manifest: RuntimeBootstrapManifest): Promise<boolean> {
+  for (const managedPath of manifest.managedPaths) {
+    const target = safeWorkspaceFile(managedPath);
+    const expected = manifest.files[managedPath].endsWith('\n') ? manifest.files[managedPath] : `${manifest.files[managedPath]}\n`;
+    const actual = await fs.readFile(target, 'utf8').catch(() => null);
+    if (actual !== expected) return true;
+  }
+  return false;
+}
+
+function safeWorkspaceFile(managedPath: string): string {
+  if (!managedPath || managedPath.includes('/') || managedPath.includes('\\') || managedPath === '.' || managedPath === '..') {
+    throw new Error(`Unsafe bootstrap managed path: ${managedPath}`);
+  }
+  const resolvedWorkspace = path.resolve(config.workspaceDir);
+  const resolvedTarget = path.resolve(resolvedWorkspace, managedPath);
+  if (!resolvedTarget.startsWith(`${resolvedWorkspace}${path.sep}`)) {
+    throw new Error(`Bootstrap managed path escapes workspace: ${managedPath}`);
+  }
+  return resolvedTarget;
+}
+
+function safeSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 async function poll(): Promise<void> {
@@ -183,6 +323,7 @@ async function runChatCommand(command: RuntimeChatCommand): Promise<void> {
     }
 
     if (command.type === 'send_message') {
+      await materializeChatAttachments(command);
       let session = command.session.openclawSessionKey
         ? {
             openclawSessionKey: command.session.openclawSessionKey,
@@ -280,17 +421,52 @@ function isStaleSessionError(err: any): boolean {
 function buildManagedChatMessage(command: RuntimeChatCommand): string {
   const content = String(command.payload?.content || '');
   const context = command.payload?.context;
-  if (!context) return content;
+  const localAttachments = Array.isArray(command.payload?.localAttachments) ? command.payload.localAttachments : [];
+  const attachmentText = localAttachments.length
+    ? [
+        'Approved input attachments copied into the OpenClaw workspace:',
+        ...localAttachments.map((attachment: any) => `- ${attachment.filename} (${attachment.mimeType}, attachmentId=${attachment.id}) at ${attachment.localPath}`),
+        'Use these local paths only during this session. Durable file references are Nexoria attachment ids.',
+      ].join('\n')
+    : '';
+  if (!context) return [attachmentText, content].filter(Boolean).join('\n\n');
   const instructions = Array.isArray(context.instructions) ? context.instructions.join('\n') : '';
   return [
     '[Nexoria managed runtime context]',
     instructions,
     `Allowed agents: ${(context.allowedAgentIds || command.allowedAgentIds).join(', ')}`,
     `Active agent: ${command.session.agentProfileId}`,
+    attachmentText,
     '[/Nexoria managed runtime context]',
     '',
     content,
   ].filter(Boolean).join('\n');
+}
+
+async function materializeChatAttachments(command: RuntimeChatCommand): Promise<void> {
+  const attachments = Array.isArray(command.payload?.attachments) ? command.payload.attachments : [];
+  if (attachments.length === 0) return;
+  const targetDir = path.join(config.workspaceDir, 'nexoria-inputs', safeSegment(command.sessionId), safeSegment(command.id));
+  await fs.mkdir(targetDir, { recursive: true });
+  const localAttachments: any[] = [];
+  for (const attachment of attachments.slice(0, 10)) {
+    const url = String(attachment.downloadUrl || '');
+    if (!url) continue;
+    const filename = path.basename(String(attachment.filename || attachment.id || 'attachment.bin')).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const localPath = path.join(targetDir, filename);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to download attachment ${attachment.id}: ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    await fs.writeFile(localPath, bytes);
+    localAttachments.push({
+      id: attachment.id,
+      filename,
+      mimeType: attachment.mimeType,
+      sizeBytes: bytes.length,
+      localPath,
+    });
+  }
+  command.payload.localAttachments = localAttachments;
 }
 
 async function runJob(job: RuntimeJob): Promise<void> {
@@ -335,18 +511,19 @@ async function runJob(job: RuntimeJob): Promise<void> {
 
 async function callOpenClaw(job: RuntimeJob, prompt: string): Promise<string> {
   const delegatedAgentName = String(job.input?.delegatedAgentName || job.input?.metadata?.delegatedAgentName || '').trim();
-  const isContentCreator = delegatedAgentName.toLowerCase() === 'content creator';
+  const normalizedDelegatedAgentName = delegatedAgentName.toLowerCase();
+  const isSocialMediaAgent = normalizedDelegatedAgentName === 'social media agent' || normalizedDelegatedAgentName === 'content creator';
   const system = [
     'You are running inside a managed Nexoria OpenClaw runtime.',
     `Active Nexoria workspaceId: ${job.workspaceId}.`,
     `Use only this approved agent id: ${job.agentProfileId}.`,
     'When calling Nexoria MCP tools, pass the exact active workspaceId above. Never invent or substitute a workspace id.',
     'Do not create, modify, install, or switch to other agents.',
-    ...(isContentCreator
+    ...(isSocialMediaAgent
       ? [
-          'You are the delegated Nexoria Content Creator.',
+          'You are the delegated Nexoria Social Media Agent.',
           'For social/Facebook post draft work, write the copy and media brief, then call the Nexoria MCP create_social_post_draft tool with createReviewTask=true.',
-          'When creating a social post draft, include metadata.source="content_creator_runtime" and metadata.createdByAgentRole="content_creator".',
+          'When creating a social post draft, include metadata.source="social_media_agent_runtime" and metadata.createdByAgentRole="social_media_agent".',
           'Do not only return draft copy in chat; the durable Nexoria draft and approval are required.',
         ]
       : []),

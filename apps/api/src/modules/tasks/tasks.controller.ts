@@ -1,16 +1,18 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { TasksService } from './tasks.service';
-import { CreateTaskDto, UpdateTaskDto, TaskResponseDto } from './dto/create-task.dto';
+import { CreateTaskCommentDto, CreateTaskDto, UpdateTaskDto, TaskResponseDto } from './dto/create-task.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-request.interface';
+import { ManagedRuntimeService } from '../managed-runtime/managed-runtime.service';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('workspaces/:workspaceId/tasks')
 export class TasksController {
-  constructor(private readonly service: TasksService) {}
+  constructor(private readonly service: TasksService, private readonly runtime: ManagedRuntimeService) {}
 
   @Get()
   @ApiResponse({ status: 200, type: [TaskResponseDto] })
@@ -38,8 +40,26 @@ export class TasksController {
 
   @Get(':id')
   @ApiResponse({ status: 200, type: TaskResponseDto })
-  findOne(@Param('id') id: string): Promise<TaskResponseDto> {
-    return this.service.findOne(id);
+  findOne(@Param('workspaceId') wsId: string, @Param('id') id: string): Promise<TaskResponseDto> {
+    return this.service.findOne(id, wsId);
+  }
+
+  @Get(':id/comments')
+  @ApiResponse({ status: 200 })
+  comments(@Param('workspaceId') wsId: string, @Param('id') id: string): Promise<any[]> {
+    return this.service.findComments(wsId, id);
+  }
+
+  @Post(':id/comments')
+  @ApiResponse({ status: 201 })
+  createComment(@Param('workspaceId') wsId: string, @Param('id') id: string, @Body() dto: CreateTaskCommentDto, @Request() req: AuthenticatedRequest): Promise<any> {
+    return this.service.createComment(wsId, id, req.user.id, dto);
+  }
+
+  @Post(':id/chat/sessions')
+  @ApiResponse({ status: 201 })
+  createTaskChatSession(@Param('workspaceId') wsId: string, @Param('id') id: string, @Request() req: AuthenticatedRequest): Promise<any> {
+    return this.runtime.createTaskChatSession(wsId, req.user.id, id);
   }
 
   @Post()
@@ -50,13 +70,13 @@ export class TasksController {
 
   @Patch(':id')
   @ApiResponse({ status: 200, type: TaskResponseDto })
-  update(@Param('id') id: string, @Body() dto: UpdateTaskDto): Promise<TaskResponseDto> {
-    return this.service.update(id, dto);
+  update(@Param('workspaceId') wsId: string, @Param('id') id: string, @Body() dto: UpdateTaskDto): Promise<TaskResponseDto> {
+    return this.service.update(id, wsId, dto);
   }
 
   @Delete(':id')
   @ApiResponse({ status: 204 })
-  remove(@Param('id') id: string): Promise<void> {
-    return this.service.remove(id);
+  remove(@Param('workspaceId') wsId: string, @Param('id') id: string): Promise<void> {
+    return this.service.remove(id, wsId);
   }
 }

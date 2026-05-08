@@ -135,3 +135,57 @@ export class TaskResponseDto {
   @ApiProperty()
   updatedAt: Date;
 }
+
+export class CreateTaskCommentDto {
+  @ApiProperty()
+  @IsString()
+  body: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  attachmentIds?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  authorAgentProfileId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, any>;
+}
+
+export class TaskCommentResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  workspaceId: string;
+
+  @ApiProperty()
+  taskId: string;
+
+  @ApiProperty()
+  authorUserId: string | null;
+
+  @ApiProperty()
+  authorAgentProfileId: string | null;
+
+  @ApiProperty()
+  body: string;
+
+  @ApiProperty()
+  attachmentIds: string[];
+
+  @ApiProperty()
+  metadata: Record<string, any>;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
+}

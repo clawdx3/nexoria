@@ -9,12 +9,14 @@ import { RuntimeChatSession } from '../../database/entities/runtime-chat-session
 import { RuntimeChatMessage } from '../../database/entities/runtime-chat-message.entity';
 import { RuntimeChatCommand } from '../../database/entities/runtime-chat-command.entity';
 import { Task } from '../../database/entities/task.entity';
+import { TaskComment } from '../../database/entities/task-comment.entity';
+import { AttachmentsModule } from '../attachments/attachments.module';
 import { ArtifactsController, ManagedRuntimeController, RuntimeRunnerController } from './managed-runtime.controller';
 import { ManagedRuntimeService } from './managed-runtime.service';
 import { RunnerTokenGuard } from './runner-token.guard';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RuntimeInstance, RuntimeJob, RuntimeEvent, Artifact, RuntimeChatSession, RuntimeChatMessage, RuntimeChatCommand, Task]), AgentProfilesModule],
+  imports: [TypeOrmModule.forFeature([RuntimeInstance, RuntimeJob, RuntimeEvent, Artifact, RuntimeChatSession, RuntimeChatMessage, RuntimeChatCommand, Task, TaskComment]), AgentProfilesModule, AttachmentsModule],
   providers: [ManagedRuntimeService, RunnerTokenGuard],
   controllers: [ManagedRuntimeController, ArtifactsController, RuntimeRunnerController],
   exports: [ManagedRuntimeService],

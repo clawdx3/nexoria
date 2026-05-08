@@ -45,7 +45,7 @@
           <CommonLoadingSpinner size="sm" />
         </div>
         <NuxtLink
-          v-for="agent in agents"
+          v-for="agent in enabledAgents"
           :key="agent.id"
           :to="`/chat/${agent.id}`"
           :class="[
@@ -60,8 +60,8 @@
           </span>
           <span class="truncate">{{ agent.name }}</span>
         </NuxtLink>
-        <div v-if="!isLoading && agents.length === 0" class="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500 dark:border-slate-800">
-          No agents in this workspace.
+        <div v-if="!isLoading && enabledAgents.length === 0" class="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500 dark:border-slate-800">
+          No enabled agents in this workspace.
         </div>
       </div>
     </nav>
@@ -112,7 +112,7 @@ import {
   ServerCog
 } from 'lucide-vue-next'
 
-const { agents, isLoading, fetchAgents } = useAgent()
+const { enabledAgents, isLoading, fetchAgents } = useAgent()
 const route = useRoute()
 const { pendingApprovals, fetchApprovals } = useApprovals()
 const tasksStore = useTasksStore()

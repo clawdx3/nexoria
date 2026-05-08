@@ -25,7 +25,7 @@
           </div>
         </div>
 
-        <div v-if="runtimeStatus || runtimeOutputPreview || runtimeArtifactIds.length" class="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+        <div v-if="runtimeStatus || runtimeOutputPreview || runtimeArtifactIds.length || runtimeAttachmentIds.length" class="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
           <div class="flex flex-wrap items-center gap-2 text-xs">
             <span class="font-medium text-slate-700 dark:text-slate-200">Runtime</span>
             <span v-if="runtimeStatus" :class="['rounded px-1.5 py-0.5 font-medium', runtimeStatusClass]">
@@ -46,6 +46,18 @@
               <Download class="h-3 w-3" />
               Result
             </a>
+          </div>
+          <div v-if="runtimeAttachmentIds.length" class="mt-2 flex flex-wrap gap-2">
+            <button
+              v-for="attachmentId in runtimeAttachmentIds"
+              :key="attachmentId"
+              type="button"
+              class="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:text-cyan-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+              @click="openAttachment(attachmentId)"
+            >
+              <Download class="h-3 w-3" />
+              File
+            </button>
           </div>
         </div>
       </div>
@@ -77,11 +89,14 @@ const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'update', id: string, patch: Partial<Task>): void
   (e: 'delete', id: string): void
+  (e: 'continue', task: Task): void
+  (e: 'comment', task: Task): void
 }>()
 
 const assignedAgent = computed(() => {
+  const role = props.task.metadata?.handoffTargetAgentRole
   return (props.task.metadata?.agentName as string)
-    || (props.task.metadata?.handoffTargetAgentRole === 'content_creator' ? 'Content Creator' : '')
+    || (role === 'social_media_agent' || role === 'content_creator' ? 'Social Media Agent' : '')
 })
 
 const runtimeStatus = computed(() => {
@@ -112,8 +127,18 @@ const runtimeArtifactIds = computed(() => {
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
 })
 
+const runtimeAttachmentIds = computed(() => {
+  const ids = props.task.metadata?.runtimeAttachmentIds
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
+})
+
 function artifactUrl (artifactId: string): string {
   return `/api/v1/workspaces/${props.task.workspaceId}/artifacts/${artifactId}/download`
+}
+
+async function openAttachment (attachmentId: string): Promise<void> {
+  const url = await useAttachments().downloadUrl(attachmentId)
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 const formattedDate = computed(() => {
@@ -130,6 +155,14 @@ const priorityClass = computed(() => {
 
 const actionItems = computed(() => [
   [
+    {
+      label: 'Continue with agent',
+      click: () => emit('continue', props.task)
+    },
+    {
+      label: 'Add comment',
+      click: () => emit('comment', props.task)
+    },
     {
       label: 'Mark done',
       click: () => emit('update', props.task.id, { status: 'done' })

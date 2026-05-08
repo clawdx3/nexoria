@@ -32,7 +32,7 @@ const emit = defineEmits<{
 
 const options = computed(() => [
   { id: 'orchestrator', name: 'Orchestrator (Team Lead)' },
-  ...props.agents
+  ...props.agents.filter(agent => agent.isEnabled !== false)
 ])
 
 const selected = computed({

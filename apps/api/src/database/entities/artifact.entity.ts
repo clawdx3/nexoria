@@ -28,6 +28,9 @@ export class Artifact {
   @JoinColumn({ name: 'jobId' })
   job: RuntimeJob | null;
 
+  @Column({ type: 'uuid', nullable: true })
+  attachmentId: string | null;
+
   @Column()
   filename: string;
 

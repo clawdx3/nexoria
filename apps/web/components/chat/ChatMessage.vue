@@ -18,6 +18,19 @@
         :class="role === 'user' ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'"
       >
         <div class="whitespace-pre-wrap">{{ content }}</div>
+        <div v-if="attachments?.length" class="mt-3 flex flex-wrap gap-2">
+          <button
+            v-for="attachment in attachments"
+            :key="attachment.id"
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+            :class="role === 'user' ? 'border-indigo-300 bg-indigo-400/40 text-white' : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200'"
+            @click="openAttachment(attachment.id)"
+          >
+            <Paperclip class="h-3 w-3" />
+            {{ attachment.filename }}
+          </button>
+        </div>
         <div v-if="actionCard" class="mt-3 rounded-lg border border-slate-200 bg-white p-3 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
@@ -53,14 +66,15 @@
 </template>
 
 <script setup lang="ts">
-import { User, Bot } from 'lucide-vue-next'
-import type { ChatActionCard } from '~/types'
+import { User, Bot, Paperclip } from 'lucide-vue-next'
+import type { Attachment, ChatActionCard } from '~/types'
 
 const props = defineProps<{
   role: 'user' | 'assistant' | 'system'
   content: string
   agentName?: string | null
   actionCard?: ChatActionCard | null
+  attachments?: Attachment[]
 }>()
 
 const isDeciding = ref(false)
@@ -103,5 +117,10 @@ async function decideApproval (outcome: 'approve' | 'reject'): Promise<void> {
 function openTarget (): void {
   if (!props.actionCard) return
   void navigateTo(props.actionCard.type === 'approval' ? '/approvals' : '/tasks')
+}
+
+async function openAttachment (attachmentId: string): Promise<void> {
+  const url = await useAttachments().downloadUrl(attachmentId)
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 </script>

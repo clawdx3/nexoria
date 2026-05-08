@@ -34,6 +34,7 @@
         :content="msg.content"
         :agent-name="msg.agentName"
         :action-card="msg.actionCard"
+        :attachments="msg.attachments"
       />
 
       <!-- Delegation status -->
@@ -65,6 +66,7 @@ const useOpenClaw = ref(false)
 
 onMounted(() => {
   void fetchAgents()
+  if (chatStore.openClawSessionId) useOpenClaw.value = true
 })
 
 const title = computed(() => {
@@ -88,8 +90,8 @@ const delegatedAgent = computed(() => {
   return ''
 })
 
-function onSend (content: string) {
-  void chatStore.sendMessage(content, props.agentProfileId || 'orchestrator', useOpenClaw.value ? 'openclaw' : 'nexoria')
+function onSend (content: string, files: File[]) {
+  void chatStore.sendMessage(content, props.agentProfileId || 'orchestrator', useOpenClaw.value ? 'openclaw' : 'nexoria', files)
 }
 
 watch(() => chatStore.messages.length, async () => {

@@ -47,6 +47,8 @@
               :task="task"
               @update="updateTask"
               @delete="deleteTask"
+              @continue="continueTask"
+              @comment="commentTask"
             />
           </div>
         </div>
@@ -118,10 +120,28 @@ async function submitCreate () {
 }
 
 async function updateTask (id: string, patch: Partial<Task>) {
-  await patchTask(id, patch)
+  await patchTask(id, patch as any)
 }
 
 async function deleteTask (id: string) {
   await removeTask(id)
+}
+
+async function continueTask (task: Task) {
+  const workspaceId = await useWorkspaceStore().ensureWorkspace()
+  if (!workspaceId) return
+  const session = await useChatStore().startTaskChatSession(workspaceId, task.id)
+  await navigateTo(session.agentProfileId && session.agentProfileId !== 'orchestrator' ? `/chat/${session.agentProfileId}` : '/')
+}
+
+async function commentTask (task: Task) {
+  const body = window.prompt('Add a task comment')
+  if (!body?.trim()) return
+  const workspaceId = await useWorkspaceStore().ensureWorkspace()
+  if (!workspaceId) return
+  await useApi(`/workspaces/${workspaceId}/tasks/${task.id}/comments`, {
+    method: 'POST',
+    body: { body }
+  })
 }
 </script>

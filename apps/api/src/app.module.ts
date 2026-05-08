@@ -19,6 +19,7 @@ import { BrowserModule } from './modules/browser/browser.module';
 import { ManagedRuntimeModule } from './modules/managed-runtime/managed-runtime.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { SocialPostDraftsModule } from './modules/social-post-drafts/social-post-drafts.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 
 import * as entities from './database/entities';
 
@@ -57,6 +58,7 @@ import * as entities from './database/entities';
     AgentRuntimeModule,
     BrowserModule,
     ManagedRuntimeModule,
+    AttachmentsModule,
     McpModule,
     SocialPostDraftsModule,
   ],

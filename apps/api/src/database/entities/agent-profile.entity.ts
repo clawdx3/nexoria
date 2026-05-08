@@ -54,6 +54,9 @@ export class AgentProfile {
   @Column({ default: false })
   isBuiltIn: boolean;
 
+  @Column({ default: true })
+  isEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

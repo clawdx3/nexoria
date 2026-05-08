@@ -165,6 +165,12 @@ export class SendRuntimeChatMessageDto {
   @ApiProperty({ example: 'Help me plan today’s outreach tasks.' })
   @IsString()
   content: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  attachmentIds?: string[];
 }
 
 export class CompleteRuntimeChatCommandDto {

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { BadRequestException, Controller, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { AgentExecutorService } from './executor/agent-executor.service';
 import { AgentProfilesService } from '../agent-profiles/agent-profiles.service';
@@ -47,15 +47,19 @@ export class AgentRuntimeController {
           id: 'orchestrator',
           name: 'Operations Orchestrator',
           systemPrompt:
-            'You are the main Nexoria orchestrator. Keep the main chat responsive, create or inspect tasks when tools are available, and delegate execution to specialist agents instead of doing long-running work in chat. For content work, use the Content Creator agent when available. If you would otherwise do substantial work yourself, spawn a background orchestrator/runtime job so the main chat remains free.',
+            'You are the main Nexoria orchestrator. Keep the main chat responsive, create or inspect tasks when tools are available, and delegate execution to enabled specialist agents instead of doing long-running work in chat. For social content work, use the Social Media Agent when enabled. If you would otherwise do substantial work yourself, spawn a background orchestrator/runtime job so the main chat remains free.',
           modelProvider: process.env.DEFAULT_MODEL_PROVIDER || 'ollama',
           modelName: process.env.OLLAMA_MODEL || process.env.DEFAULT_MODEL_NAME || 'gpt-oss:120b',
           modelConfig: {},
           enabledTools: ['create_task', 'list_tasks'],
           role: 'orchestrator',
           defaultAutonomyLevel: 1,
+          isEnabled: true,
         }
       : await this.profiles.findOne(profileId);
+    if (profileId !== 'orchestrator' && profile.isEnabled === false) {
+      throw new BadRequestException('Agent profile is disabled');
+    }
     const ctx: AgentContext = {
       workspaceId: wsId,
       triggeredByUserId: req.user.id,

@@ -15,15 +15,17 @@ export const useChatStore = defineStore('chat', () => {
   let actionCardPollTimer: ReturnType<typeof setInterval> | null = null
   let actionCardPollAttempts = 0
 
-  async function sendMessage (content: string, agentProfileId: string = 'orchestrator', runtimeMode: ChatRuntimeMode = 'nexoria'): Promise<void> {
+  async function sendMessage (content: string, agentProfileId: string = 'orchestrator', runtimeMode: ChatRuntimeMode = 'nexoria', files: File[] = []): Promise<void> {
     const workspaceId = await useWorkspaceStore().ensureWorkspace()
     if (!workspaceId) throw new Error('No workspace selected')
     stopActionCardPolling()
+    const uploadedAttachments = files.length ? await useAttachments().uploadFiles(files, { scope: 'chat' }) : []
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content,
+      attachments: uploadedAttachments,
       timestamp: new Date().toISOString()
     }
     activeTurnStartedAt.value = userMsg.timestamp
@@ -33,7 +35,7 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       if (runtimeMode === 'openclaw') {
-        await runOpenClawChat(workspaceId, agentProfileId, content)
+        await runOpenClawChat(workspaceId, agentProfileId, content, uploadedAttachments.map(attachment => attachment.id))
       } else {
         const assistantContent = await runNexoriaChat(workspaceId, agentProfileId, content)
         const assistantMsg: ChatMessage = {
@@ -74,12 +76,12 @@ export const useChatStore = defineStore('chat', () => {
     return res.message || 'Task dispatched.'
   }
 
-  async function runOpenClawChat (workspaceId: string, agentProfileId: string, content: string): Promise<void> {
+  async function runOpenClawChat (workspaceId: string, agentProfileId: string, content: string, attachmentIds: string[] = []): Promise<void> {
     const session = await ensureOpenClawSession(workspaceId, agentProfileId)
     startOpenClawStream(workspaceId, session.id, agentProfileId)
     await useApi<any>(`/workspaces/${workspaceId}/runtime/chat/sessions/${session.id}/messages`, {
       method: 'POST',
-      body: { content }
+      body: { content, attachmentIds }
     })
   }
 
@@ -103,6 +105,16 @@ export const useChatStore = defineStore('chat', () => {
       body: { agentProfileId }
     })
     openClawSessionId.value = session.id
+    if (process.client) localStorage.setItem(storageKey, session.id)
+    return session
+  }
+
+  async function startTaskChatSession (workspaceId: string, taskId: string): Promise<any> {
+    const session = await useApi<any>(`/workspaces/${workspaceId}/tasks/${taskId}/chat/sessions`, {
+      method: 'POST'
+    })
+    openClawSessionId.value = session.id
+    const storageKey = openClawSessionStorageKey(workspaceId, session.agentProfileId || 'orchestrator')
     if (process.client) localStorage.setItem(storageKey, session.id)
     return session
   }
@@ -212,6 +224,7 @@ export const useChatStore = defineStore('chat', () => {
       content: message.content || '',
       agentProfileId: message.metadata?.agentProfileId || fallbackAgentProfileId || null,
       actionCard: message.actionCard || message.metadata?.actionCard || null,
+      attachments: message.attachments || message.metadata?.attachments || [],
       timestamp: message.createdAt || message.timestamp || new Date().toISOString()
     }
   }
@@ -343,6 +356,7 @@ export const useChatStore = defineStore('chat', () => {
     error,
     openClawSessionId,
     sendMessage,
+    startTaskChatSession,
     clearMessages,
     addSystemMessage
   }

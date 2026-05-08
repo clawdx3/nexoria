@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsObject, IsArray, IsInt, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray, IsInt, IsEnum, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AgentRole, ModelProvider } from '../../../database/entities/agent-profile.entity';
 
@@ -44,6 +44,11 @@ export class CreateAgentProfileDto {
   @IsOptional()
   @IsInt()
   defaultAutonomyLevel?: number;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
 }
 
 export class UpdateAgentProfileDto {
@@ -87,6 +92,11 @@ export class UpdateAgentProfileDto {
   @IsOptional()
   @IsInt()
   defaultAutonomyLevel?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
 }
 
 export class AgentProfileResponseDto {
@@ -125,6 +135,9 @@ export class AgentProfileResponseDto {
 
   @ApiProperty()
   isBuiltIn: boolean;
+
+  @ApiProperty()
+  isEnabled: boolean;
 
   @ApiProperty()
   createdAt: Date;

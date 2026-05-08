@@ -70,6 +70,40 @@ export interface Task {
 export type TaskStatus = 'pending' | 'in_progress' | 'done' | 'cancelled'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
+export interface CreateTaskPayload {
+  title: string
+  description?: string
+  status?: TaskStatus
+  priority?: TaskPriority
+  assignedToId?: string | null
+  dueDate?: string | Date | null
+  tags?: string[]
+  metadata?: Record<string, any>
+}
+
+export interface UpdateTaskPayload extends Partial<CreateTaskPayload> {}
+
+export interface Attachment {
+  id: string
+  workspaceId: string
+  scope: 'chat' | 'tasks' | 'approvals' | 'runtime-jobs' | 'drafts' | 'general'
+  scopeId?: string | null
+  source: 'user_upload' | 'agent_upload' | 'runtime' | 'reference'
+  status: 'pending' | 'active' | 'deleted'
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  taskId?: string | null
+  runtimeJobId?: string | null
+  runtimeChatSessionId?: string | null
+  runtimeChatMessageId?: string | null
+  createdByAgentProfileId?: string | null
+  uploadedByUserId?: string | null
+  metadata?: Record<string, any>
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Approval {
   id: string
   workspaceId: string
@@ -109,6 +143,7 @@ export interface AgentProfile {
   role: string
   defaultAutonomyLevel: number
   isBuiltIn: boolean
+  isEnabled: boolean
   createdAt: string
   updatedAt: string
 }
@@ -162,6 +197,7 @@ export interface ChatMessage {
   agentProfileId?: string | null
   agentName?: string | null
   actionCard?: ChatActionCard | null
+  attachments?: Attachment[]
   timestamp: string
 }
 
@@ -202,6 +238,7 @@ export interface CreateAgentPayload {
   modelName: string
   enabledTools?: string[]
   autonomyLevel?: number
+  isEnabled?: boolean
 }
 
 export interface Toast {

@@ -89,7 +89,7 @@
 definePageMeta({ middleware: 'auth' })
 
 const toast = useToast()
-const { agents, fetchAgents } = useAgent()
+const { enabledAgents, fetchAgents } = useAgent()
 const { status, jobs, artifacts, isLoading, fetchRuntime, createJob, artifactUrl } = useManagedRuntime()
 
 const selectedAgentId = ref('orchestrator')
@@ -99,7 +99,7 @@ const submitting = ref(false)
 const runtimeOnline = computed(() => status.value?.status === 'ready')
 const agentOptions = computed(() => [
   { id: 'orchestrator', name: 'Orchestrator' },
-  ...agents.value.map((agent: any) => ({ id: agent.id, name: agent.name }))
+  ...enabledAgents.value.map((agent: any) => ({ id: agent.id, name: agent.name }))
 ])
 
 onMounted(() => {

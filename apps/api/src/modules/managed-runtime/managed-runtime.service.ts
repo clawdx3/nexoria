@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Observable, Subject } from 'rxjs';
 import { AgentProfilesService } from '../agent-profiles/agent-profiles.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 import { RuntimeInstance, RuntimeInstanceStatus } from '../../database/entities/runtime-instance.entity';
 import { RuntimeJob, RuntimeJobStatus } from '../../database/entities/runtime-job.entity';
 import { RuntimeEvent } from '../../database/entities/runtime-event.entity';
@@ -13,6 +13,7 @@ import { RuntimeChatSession } from '../../database/entities/runtime-chat-session
 import { RuntimeChatMessage, RuntimeChatMessageRole } from '../../database/entities/runtime-chat-message.entity';
 import { RuntimeChatCommand, RuntimeChatCommandStatus, RuntimeChatCommandType } from '../../database/entities/runtime-chat-command.entity';
 import { Task } from '../../database/entities/task.entity';
+import { TaskComment } from '../../database/entities/task-comment.entity';
 import {
   CompleteRuntimeChatCommandDto,
   CompleteRuntimeJobDto,
@@ -25,17 +26,22 @@ import {
   SendRuntimeChatMessageDto,
   UploadArtifactDto,
 } from './dto/managed-runtime.dto';
+import { BOOTSTRAP_VERSION, BOOTSTRAP_FILES, BOOTSTRAP_MANAGED_PATHS } from './bootstrap-templates';
 
 const DEFAULT_LIMITS = {
   timeoutSeconds: 300,
   maxOutputFiles: 5,
   maxArtifactBytes: 10 * 1024 * 1024,
-  allowedExtensions: ['.txt', '.md', '.csv', '.json', '.html'],
+  allowedExtensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.md', '.csv', '.json', '.html', '.docx', '.xlsx'],
+};
+
+const DELEGATION_CAPS = {
+  maxPerParentSession: 5,
+  maxPerWorkspace: 8,
 };
 
 @Injectable()
 export class ManagedRuntimeService {
-  private readonly artifactRoot = process.env.ARTIFACT_STORAGE_DIR || '/app/storage/artifacts';
   private readonly chatStreams = new Map<string, Subject<any>>();
 
   constructor(
@@ -47,11 +53,14 @@ export class ManagedRuntimeService {
     @InjectRepository(RuntimeChatMessage) private readonly chatMessages: Repository<RuntimeChatMessage>,
     @InjectRepository(RuntimeChatCommand) private readonly chatCommands: Repository<RuntimeChatCommand>,
     @InjectRepository(Task) private readonly tasks: Repository<Task>,
+    @InjectRepository(TaskComment) private readonly taskComments: Repository<TaskComment>,
     private readonly agentProfiles: AgentProfilesService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   async createJob(workspaceId: string, requestedByUserId: string | null, dto: CreateRuntimeJobDto): Promise<any> {
     await this.assertAgentAllowed(workspaceId, dto.agentProfileId);
+    await this.assertDelegationCapacity(workspaceId, dto.input?.parentChatSessionId);
     const instance = await this.findReadyInstance(workspaceId);
     const job = this.jobs.create({
       workspaceId,
@@ -117,7 +126,7 @@ export class ManagedRuntimeService {
       metadata: dto.metadata ?? {},
     }));
     await this.enqueueChatCommand(session, 'start_session', {
-      context: await this.buildRuntimeChatContext(workspaceId, userId, agentProfileId, allowedAgentIds),
+      context: await this.buildRuntimeChatContext(workspaceId, userId, agentProfileId, allowedAgentIds, dto.metadata ?? {}, session.id),
       allowedAgentIds,
     });
     this.emitChat(session.id, { type: 'session_created', session: this.chatSessionDto(session) });
@@ -151,13 +160,24 @@ export class ManagedRuntimeService {
       return { message: this.chatMessageDto(system) };
     }
 
-    const message = await this.saveChatMessage(workspaceId, sessionId, 'user', dto.content, 'completed', { userId });
+    const attachmentIds = dto.attachmentIds ?? [];
+    if (attachmentIds.length) await this.attachments.getMany(workspaceId, attachmentIds);
+    const message = await this.saveChatMessage(workspaceId, sessionId, 'user', dto.content, 'completed', { userId, attachmentIds });
+    const linkedAttachments = attachmentIds.length
+      ? await this.attachments.linkToChatMessage(workspaceId, attachmentIds, message.id, sessionId)
+      : [];
     await this.chatSessions.update(sessionId, { lastMessageAt: new Date() });
+    const isFirstMessage = !session.openclawSessionKey;
+    const context = isFirstMessage
+      ? await this.buildRuntimeChatContext(workspaceId, userId, session.agentProfileId, await this.allowedAgentIds(workspaceId), session.metadata ?? {}, session.id)
+      : undefined;
     await this.enqueueChatCommand(session, 'send_message', {
       userMessageId: message.id,
       content: dto.content,
+      attachmentIds,
+      attachments: await Promise.all(linkedAttachments.map((attachment: any) => this.attachmentRuntimeSummary(workspaceId, attachment.id))),
       recentMessages: await this.recentChatTranscript(workspaceId, sessionId),
-      context: session.openclawSessionKey ? undefined : await this.buildRuntimeChatContext(workspaceId, userId, session.agentProfileId, await this.allowedAgentIds(workspaceId)),
+      context,
     });
     this.emitChat(sessionId, { type: 'user_message', message: this.chatMessageDto(message) });
     return { message: this.chatMessageDto(message), session: this.chatSessionDto(session) };
@@ -173,12 +193,35 @@ export class ManagedRuntimeService {
     return artifacts.map((artifact) => this.artifactDto(artifact));
   }
 
-  async getArtifact(workspaceId: string, artifactId: string): Promise<{ artifact: Artifact; bytes: Buffer }> {
+  async getArtifact(workspaceId: string, artifactId: string): Promise<{ artifact: any; bytes: Buffer }> {
     const artifact = await this.artifacts.findOne({ where: { id: artifactId, workspaceId } });
     if (!artifact) throw new NotFoundException('Artifact not found');
-    const fullPath = path.join(this.artifactRoot, artifact.storageKey);
-    const bytes = await fs.readFile(fullPath);
+    if (!artifact.attachmentId) throw new NotFoundException('Legacy local artifact storage is no longer available for this artifact');
+    const { attachment, bytes } = await this.attachments.getBytes(workspaceId, artifact.attachmentId);
+    artifact.mimeType = attachment.mimeType;
+    artifact.filename = attachment.filename;
     return { artifact, bytes };
+  }
+
+  async createTaskChatSession(workspaceId: string, userId: string, taskId: string): Promise<any> {
+    const task = await this.tasks.findOne({ where: { id: taskId, workspaceId } });
+    if (!task) throw new NotFoundException('Task not found');
+    const agentProfileId = (task.metadata?.handoffTargetAgentProfileId as string | undefined) || 'orchestrator';
+    if (task.status === 'done') {
+      task.status = 'in_progress';
+      task.metadata = {
+        ...(task.metadata ?? {}),
+        reopenedForRevisionAt: new Date().toISOString(),
+      };
+      await this.tasks.save(task);
+    }
+    return this.createChatSession(workspaceId, userId, {
+      agentProfileId,
+      metadata: {
+        taskId,
+        mode: 'task_continuation',
+      },
+    });
   }
 
   async registerInstance(dto: RegisterRuntimeInstanceDto): Promise<any> {
@@ -199,6 +242,14 @@ export class ManagedRuntimeService {
       instance = await this.instances.save(this.instances.create({ instanceKey: dto.instanceKey, ...patch }));
     }
     return this.instanceDto(instance);
+  }
+
+  runtimeBootstrapManifest(): any {
+    return {
+      version: BOOTSTRAP_VERSION,
+      managedPaths: BOOTSTRAP_MANAGED_PATHS,
+      files: BOOTSTRAP_FILES,
+    };
   }
 
   async heartbeat(instanceKey: string, dto: HeartbeatRuntimeInstanceDto): Promise<any> {
@@ -255,6 +306,13 @@ export class ManagedRuntimeService {
     });
     await this.addEvent(job.workspaceId, job.id, instance.id, `job_${dto.status}`, dto.status === 'completed' ? 'info' : 'error', dto.error ?? `Runtime job ${dto.status}.`, dto.result ?? {});
     await this.applyRuntimeJobTaskSideEffects(job, dto);
+    if (dto.status === 'completed' || dto.status === 'failed') {
+      try {
+        await this.announceJobCompletionToParent(job, dto);
+      } catch (err: any) {
+        await this.addEvent(job.workspaceId, job.id, instance.id, 'announce_failed', 'warn', `Announce-back failed: ${err.message}`, {});
+      }
+    }
     return this.jobDto(await this.jobs.findOneOrFail({ where: { id: job.id } }));
   }
 
@@ -270,21 +328,32 @@ export class ManagedRuntimeService {
       throw new BadRequestException('Artifact exceeds max size');
     }
     const safeFilename = path.basename(dto.filename).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storageKey = path.join(job.workspaceId, job.id, `${Date.now()}-${safeFilename}`);
-    const fullPath = path.join(this.artifactRoot, storageKey);
-    await fs.mkdir(path.dirname(fullPath), { recursive: true });
-    await fs.writeFile(fullPath, bytes);
+    const attachment = await this.attachments.uploadBytes(job.workspaceId, {
+      filename: safeFilename,
+      mimeType: dto.mimeType,
+      contentBase64: dto.contentBase64,
+      sizeBytes: bytes.length,
+      scope: 'runtime-jobs',
+      scopeId: job.id,
+      source: 'runtime',
+      runtimeJobId: job.id,
+      taskId: job.input?.taskId,
+      createdByAgentProfileId: job.agentProfileId,
+      metadata: dto.metadata ?? {},
+    }, { agentProfileId: job.agentProfileId });
     const artifact = await this.artifacts.save(this.artifacts.create({
       workspaceId: job.workspaceId,
       jobId: job.id,
       filename: safeFilename,
       mimeType: dto.mimeType,
       sizeBytes: bytes.length,
-      storageKey,
-      metadata: dto.metadata ?? {},
+      storageKey: attachment.storageKey ?? attachment.id,
+      attachmentId: attachment.id,
+      metadata: { ...(dto.metadata ?? {}), attachmentId: attachment.id },
     }));
     await this.addEvent(job.workspaceId, job.id, job.instanceId, 'artifact_uploaded', 'info', `Artifact uploaded: ${safeFilename}`, {
       artifactId: artifact.id,
+      attachmentId: attachment.id,
       sizeBytes: artifact.sizeBytes,
     });
     return this.artifactDto(artifact);
@@ -386,6 +455,73 @@ export class ManagedRuntimeService {
     }
   }
 
+  private async assertDelegationCapacity(workspaceId: string, parentChatSessionId?: string | null): Promise<void> {
+    const activeWorkspace = await this.jobs.count({
+      where: [
+        { workspaceId, status: 'queued' as RuntimeJobStatus },
+        { workspaceId, status: 'running' as RuntimeJobStatus },
+      ],
+    });
+    if (activeWorkspace >= DELEGATION_CAPS.maxPerWorkspace) {
+      throw new BadRequestException(
+        `Workspace is at the delegation cap (${DELEGATION_CAPS.maxPerWorkspace} concurrent runtime jobs). Wait for an in-flight job to finish before delegating more.`,
+      );
+    }
+    if (!parentChatSessionId) return;
+    const inFlight = await this.jobs.find({
+      where: [
+        { workspaceId, status: 'queued' as RuntimeJobStatus },
+        { workspaceId, status: 'running' as RuntimeJobStatus },
+      ],
+    });
+    const perParent = inFlight.filter((j) => (j.input as any)?.parentChatSessionId === parentChatSessionId).length;
+    if (perParent >= DELEGATION_CAPS.maxPerParentSession) {
+      throw new BadRequestException(
+        `This chat already has ${DELEGATION_CAPS.maxPerParentSession} delegations in flight. Wait for one to finish before delegating again.`,
+      );
+    }
+  }
+
+  private async announceJobCompletionToParent(job: RuntimeJob, dto: CompleteRuntimeJobDto): Promise<void> {
+    const parentChatSessionId = (job.input as any)?.parentChatSessionId as string | undefined;
+    if (!parentChatSessionId) return;
+    const parent = await this.chatSessions.findOne({ where: { id: parentChatSessionId, workspaceId: job.workspaceId } });
+    if (!parent || parent.status === 'closed') return;
+
+    const delegatedAgentName = (job.input as any)?.delegatedAgentName as string | undefined;
+    const taskId = (job.input as any)?.taskId as string | undefined;
+    const outputPreview = typeof dto.result?.output === 'string' ? String(dto.result.output).slice(0, 1500) : '';
+    const artifactCount = Array.isArray(dto.result?.artifacts) ? dto.result.artifacts.length : 0;
+    const lines = [
+      `[Nexoria announce] Specialist job ${job.id} (${delegatedAgentName ?? job.agentProfileId}) finished.`,
+      `Status: ${dto.status}.`,
+      taskId ? `Linked task: ${taskId}.` : null,
+      artifactCount ? `Artifacts produced: ${artifactCount}.` : null,
+      dto.error ? `Error: ${dto.error}.` : null,
+      outputPreview ? `Output preview:\n${outputPreview}` : null,
+      'Summarize this for the user and decide whether further action is needed. Do not delegate again unless the user asks for it.',
+    ].filter(Boolean) as string[];
+    const announceContent = lines.join('\n');
+
+    const message = await this.saveChatMessage(parent.workspaceId, parent.id, 'system', announceContent, 'completed', {
+      announce: true,
+      runtimeJobId: job.id,
+      runtimeJobStatus: dto.status,
+      delegatedAgentName,
+    });
+    await this.chatSessions.update(parent.id, { lastMessageAt: new Date() });
+    await this.enqueueChatCommand(parent, 'send_message', {
+      userMessageId: message.id,
+      content: announceContent,
+      attachmentIds: [],
+      attachments: [],
+      recentMessages: await this.recentChatTranscript(parent.workspaceId, parent.id),
+      announce: true,
+      runtimeJobId: job.id,
+    });
+    this.emitChat(parent.id, { type: 'runtime_job_announce', message: this.chatMessageDto(message), runtimeJobId: job.id, status: dto.status });
+  }
+
   private async requireChatSession(workspaceId: string, sessionId: string): Promise<RuntimeChatSession> {
     const session = await this.chatSessions.findOne({ where: { id: sessionId, workspaceId } });
     if (!session) throw new NotFoundException('Runtime chat session not found');
@@ -393,7 +529,7 @@ export class ManagedRuntimeService {
   }
 
   private async allowedAgentIds(workspaceId: string): Promise<string[]> {
-    const profiles = await this.agentProfiles.findByWorkspace(workspaceId);
+    const profiles = await this.agentProfiles.findEnabledByWorkspace(workspaceId);
     return ['orchestrator', ...profiles.map((profile) => profile.id)];
   }
 
@@ -448,6 +584,9 @@ export class ManagedRuntimeService {
     const artifactIds = Array.isArray(dto.result?.artifacts)
       ? dto.result.artifacts.map((artifact: any) => artifact.id).filter(Boolean)
       : [];
+    const attachmentIds = Array.isArray(dto.result?.artifacts)
+      ? dto.result.artifacts.map((artifact: any) => artifact.attachmentId).filter(Boolean)
+      : [];
     const output = typeof dto.result?.output === 'string' ? dto.result.output : '';
     task.status = dto.status === 'completed' ? 'done' : dto.status === 'failed' || dto.status === 'rejected' || dto.status === 'cancelled' ? 'cancelled' : task.status;
     task.metadata = {
@@ -457,6 +596,7 @@ export class ManagedRuntimeService {
       runtimeCompletedAt: new Date().toISOString(),
       runtimeError: dto.error ?? null,
       runtimeArtifactIds: artifactIds,
+      runtimeAttachmentIds: attachmentIds,
       runtimeOutputPreview: output ? output.slice(0, 500) : null,
       handoffStatus: dto.status === 'completed' ? 'completed' : `runtime_job_${dto.status}`,
     };
@@ -515,13 +655,35 @@ export class ManagedRuntimeService {
     }));
   }
 
-  private async buildRuntimeChatContext(workspaceId: string, userId: string, agentProfileId: string, allowedAgentIds: string[]): Promise<Record<string, any>> {
+  private async buildRuntimeChatContext(workspaceId: string, userId: string, agentProfileId: string, allowedAgentIds: string[], metadata: Record<string, any> = {}, chatSessionId?: string): Promise<Record<string, any>> {
     const isOrchestrator = agentProfileId === 'orchestrator';
+    const enabledAgents = await this.agentProfiles.findEnabledByWorkspace(workspaceId);
+    const recentAttachments = await this.attachments.list(workspaceId, { limit: 20 });
+    const taskContext = metadata.taskId ? await this.taskContext(workspaceId, String(metadata.taskId)) : null;
     return {
       workspaceId,
       userId,
+      chatSessionId,
       agentProfileId,
       allowedAgentIds,
+      enabledAgents: enabledAgents.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        description: agent.description,
+        role: agent.role,
+      })),
+      attachments: recentAttachments.map((attachment) => ({
+        id: attachment.id,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        scope: attachment.scope,
+        taskId: attachment.taskId,
+        runtimeJobId: attachment.runtimeJobId,
+        runtimeChatSessionId: attachment.runtimeChatSessionId,
+        source: attachment.source,
+      })),
+      taskContext,
       instructions: [
         'You are running behind Nexoria managed OpenClaw chat.',
         isOrchestrator
@@ -532,26 +694,79 @@ export class ManagedRuntimeService {
         'Do not create, switch, modify, install, or configure agents.',
         'If asked to change agents or runtime configuration, say admin approval is required.',
         'Risky external actions must be routed through Nexoria approvals.',
+        'Durable files live in Nexoria attachments. Use MCP attachment tools to list, refetch, reference, or upload files; local OpenClaw paths are temporary.',
         `Your active workspaceId is "${workspaceId}". Pass this exact value whenever a Nexoria MCP tool requires a workspaceId — never invent or substitute another id.`,
-        'When work should continue in the background, call delegate_runtime_job. If you would otherwise do the work yourself, delegate to agentProfileId "orchestrator" so this main chat remains free.',
+        chatSessionId ? `Your active chatSessionId is "${chatSessionId}". Pass this exact value as chatSessionId whenever calling enqueue_specialist_job so the specialist's result is announced back to this chat.` : 'No chatSessionId is available — announce-back will not be wired for delegations from this run.',
+        'The enabled specialist agent list in this message is the current Nexoria source of truth and supersedes any older session memory or prior runtime context.',
+        `Enabled specialist agents: ${enabledAgents.length > 0 ? enabledAgents.map((agent) => `${agent.name} (${agent.id})`).join(', ') : 'none'}. Delegate only to enabled agents. If the needed agent is disabled or missing, create a task or ask an admin to enable it.`,
+        'Delegation model: Nexoria runs on a Nexoria-level delegation tool, NOT OpenClaw\'s sessions_spawn. Never call sessions_spawn or /subagents. Use enqueue_specialist_job instead.',
+        'When work should continue in the background, call enqueue_specialist_job. If you would otherwise do the work yourself, enqueue with agentProfileId "orchestrator" so this main chat remains free.',
+        'enqueue_specialist_job returns immediately with a queued runtime job. The specialist runs asynchronously and you will receive a follow-up turn in this chat prefixed with "[Nexoria announce]" when it finishes. When you receive an announce, summarize the result for the user and decide whether further action is needed.',
+        'There is a cap of 5 concurrent delegations per chat and 8 per workspace. If enqueue_specialist_job returns a capacity error, tell the user the queue is full and wait for in-flight work to finish before retrying.',
         'When the user asks to create, add, track, plan, schedule, remember, assign, or capture work, call the Nexoria MCP create_task tool. Do not only describe the task in chat.',
         'When the user asks to complete, start, reopen, cancel, rename, reprioritize, or otherwise change a task, call list_tasks first if the exact task id is not known, then call update_task_status.',
         'When the user asks what tasks exist, what is pending, what is in progress, or what is done, call list_tasks.',
         ...(isOrchestrator
           ? [
-              'For Facebook/social/content creation requests, do not write the final copy and do not call create_social_post_draft directly. First create a tracking task with create_task, then delegate the work with delegate_runtime_job using agentName "Content Creator" and the created taskId. Include the full user brief in the delegated prompt and ask Content Creator to create the durable draft and review approval.',
-              'After delegating content work, briefly tell the user the Content Creator is preparing the draft and that the approval will appear in chat when ready.',
+              'For Facebook/social/content creation requests, do not write the final copy and do not call create_social_post_draft directly. First create a tracking task with create_task, then delegate the work with enqueue_specialist_job using agentName "Social Media Agent" and the created taskId. Include the full user brief in the delegated prompt and ask Social Media Agent to create the durable draft and review approval.',
+              'After delegating content work, briefly tell the user the Social Media Agent is preparing the draft. When the announce-back arrives, summarize the outcome and any approval link.',
             ]
           : [
               'When delegated to create, draft, prepare, write, schedule, revise, approve, or publish a Facebook/social post, call create_social_post_draft or update_social_post_draft. Do not store social post copy only in chat.',
               'For Facebook post requests, use platform "facebook". Default to createReviewTask=true so Nexoria creates a pending approval and review task; only set it false when the user explicitly asks for a private draft without review.',
-              'When calling create_social_post_draft from delegated content work, include metadata.source="content_creator_runtime" and metadata.createdByAgentRole="content_creator".',
+              'When calling create_social_post_draft from delegated social media work, include metadata.source="social_media_agent_runtime" and metadata.createdByAgentRole="social_media_agent".',
             ]),
         'If the user refers to an existing social post draft without an exact draft id, call list_social_post_drafts before updating it.',
         'Never say a task was created or updated unless the relevant Nexoria MCP tool returned successfully.',
         'Never say a social post draft was created or updated unless the relevant Nexoria MCP tool returned successfully.',
+        'Never claim a file was stored durably unless a Nexoria attachment or artifact tool returned an attachmentId.',
         'After creating or updating a task or social post draft, summarize the returned id, title, status, and any linked task id.',
       ],
+    };
+  }
+
+  private async taskContext(workspaceId: string, taskId: string): Promise<any | null> {
+    const task = await this.tasks.findOne({ where: { id: taskId, workspaceId } });
+    if (!task) return null;
+    const comments = await this.taskComments.find({ where: { workspaceId, taskId }, order: { createdAt: 'ASC' }, take: 20 });
+    const attachments = await this.attachments.list(workspaceId, { taskId });
+    return {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      metadata: task.metadata ?? {},
+      comments: comments.map((comment) => ({
+        id: comment.id,
+        body: comment.body,
+        authorUserId: comment.authorUserId,
+        authorAgentProfileId: comment.authorAgentProfileId,
+        attachmentIds: comment.attachmentIds ?? [],
+        createdAt: comment.createdAt,
+      })),
+      attachments: attachments.map((attachment) => ({
+        id: attachment.id,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        source: attachment.source,
+      })),
+    };
+  }
+
+  private async attachmentRuntimeSummary(workspaceId: string, attachmentId: string): Promise<any> {
+    const { attachment, downloadUrl, expiresAt } = await this.attachments.getDownloadUrl(workspaceId, attachmentId);
+    return {
+      id: attachment.id,
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      scope: attachment.scope,
+      taskId: attachment.taskId,
+      runtimeChatSessionId: attachment.runtimeChatSessionId,
+      downloadUrl,
+      downloadUrlExpiresAt: expiresAt,
     };
   }
 
@@ -573,6 +788,15 @@ export class ManagedRuntimeService {
       this.chatStreams.set(sessionId, subject);
     }
     return subject;
+  }
+
+  private cleanupChatStreams(): void {
+    for (const [sessionId, subject] of this.chatStreams) {
+      if (subject.closed || subject.observers.length === 0) {
+        subject.complete();
+        this.chatStreams.delete(sessionId);
+      }
+    }
   }
 
   private emitChat(sessionId: string, payload: any): void {
@@ -643,6 +867,7 @@ export class ManagedRuntimeService {
       filename: artifact.filename,
       mimeType: artifact.mimeType,
       sizeBytes: artifact.sizeBytes,
+      attachmentId: artifact.attachmentId,
       downloadUrl: `/api/v1/workspaces/${artifact.workspaceId}/artifacts/${artifact.id}/download`,
       metadata: artifact.metadata ?? {},
       createdAt: artifact.createdAt,

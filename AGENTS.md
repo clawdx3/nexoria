@@ -212,7 +212,7 @@ Realtime chat is delegated to a managed OpenClaw gateway. Nexoria stays the cano
 |---------|-------|------|------|
 | `openclaw-gateway` | `ghcr.io/openclaw/openclaw:latest` | `node` (uid 1000) | Hosts the OpenClaw WS gateway on `:18789`, the agent runtime, and the MCP client (`bundle-mcp`). Internal only — never expose 18789 to the host. |
 | `openclaw-runner` | local | `node` (uid 1000) | Long-polls Nexoria for chat commands, talks to the OpenClaw gateway over WS, posts events back. The only service authorised to speak the gateway protocol. |
-| `api` (Nest module `McpModule`) | local | root | Hosts the **MCP server** at `GET /api/v1/mcp` (SSE) + `POST /api/v1/mcp/messages?sessionId=…`. Exposes `create_task`, `list_tasks`, `update_task_status`. |
+| `api` (Nest module `McpModule`) | local | root | Hosts the **MCP server** at `GET /api/v1/mcp` (SSE) + `POST /api/v1/mcp/messages?sessionId=…`. Exposes task tools, social-post-draft tools, attachment tools, and the `enqueue_specialist_job` delegation tool. |
 
 ### Flow on a chat message
 
@@ -223,12 +223,38 @@ Realtime chat is delegated to a managed OpenClaw gateway. Nexoria stays the cano
 5. When the LLM calls a tool → MCP server writes to DB via existing `TasksService` → emits a per-workspace SSE event → frontend tasks board updates live.
 6. Final assistant text streams back to Nexoria via `runner-runtime/.../events`, which fans out to the chat SSE channel.
 
+### Delegation model (Nexoria-level, not OpenClaw subagents)
+
+We deliberately do **not** use OpenClaw's native subagent primitive (`sessions_spawn` / `/subagents spawn`). One OpenClaw agent is paired with the gateway; per-agent isolation, multi-agent `agents.list[]` config, and per-agent `agentDir` provisioning are not in play. Nexoria's "specialists" are distinct rows in `agent_profiles` (role `orchestrator` or `specialist`), distinguished by system prompt + `enabledTools`.
+
+Delegation flow:
+
+1. Orchestrator chat decides to hand off work and calls the MCP tool `enqueue_specialist_job` (apps/api/src/modules/mcp/mcp.service.ts). Args include `workspaceId`, `chatSessionId` (passed through from the runtime context so the announce-back can route home), an optional `agentName`/`agentProfileId`, optional `taskId`, and the delegated `prompt`.
+2. `ManagedRuntimeService.createJob` enforces concurrency caps before queuing: **5 concurrent delegations per parent chat session, 8 per workspace**. Over-cap calls return a 400 with a clear message.
+3. The runner picks up the queued `RuntimeJob`, starts a fresh top-level OpenClaw session keyed to the specialist agent profile, and runs the delegated prompt.
+4. On completion, `ManagedRuntimeService.completeJob` triggers `announceJobCompletionToParent`. If the job has `input.parentChatSessionId` and the parent session is still open, we save a `system`-role chat message with content prefixed `[Nexoria announce]` and enqueue a `send_message` runtime chat command on the parent session — OpenClaw treats it as a follow-up turn and the orchestrator's LLM can reply to the user with a summary. The announce-back is skipped silently if the parent session is closed.
+5. SSE event `runtime_job_announce` fires on the parent session stream so the UI can render the announce inline.
+
+Why this design:
+
+- Single device pairing stays simple — the volume / `node:1000` / `paired.json` story we stabilized doesn't multiply.
+- LLM-runtime independence — swapping OpenClaw for another runtime is a runner-level change, not a delegation rewrite.
+- Dynamic agents stay easy — adding/removing an `agent_profile` is a DB row, no gateway restart.
+
+Trade-offs (intentional, see plan doc `~/.claude/plans/resilient-hopping-cerf.md`):
+
+- No per-specialist OpenClaw `agentDir`, auth profile, or session store — all specialists share one OpenClaw agent's auth.
+- No native cancel cascade — `cancel_specialist_job` is not yet implemented (would need a DB enum migration on `runtime_chat_commands.type`).
+- `enabledTools` is currently enforced at the prompt level (and at `delegate target` validation in `resolveDelegatedAgentId`), not at every MCP call. A future pass should plumb caller agent profile id through the MCP transport.
+
+If you find yourself reaching for `sessions_spawn` or `/subagents`, stop — use `enqueue_specialist_job`. The orchestrator system prompt explicitly forbids `sessions_spawn`.
+
 ### Critical invariants (don't regress these)
 
 - **MCP server speaks legacy MCP HTTP+SSE transport.** OpenClaw's `bundle-mcp` does `GET <url>` expecting `text/event-stream` and reads the `endpoint` event for the messages POST URL. The MCP server uses the official `@modelcontextprotocol/sdk` (`SSEServerTransport`) — **one `Server` instance per SSE connection** (the SDK rejects sharing).
 - **Tolerate repeated `Authorization` headers.** OpenClaw's bundle-mcp appends the configured `headers.Authorization` on top of one HTTP already attached, so the upstream sees `Bearer X, Bearer X`. `McpService.authenticate` splits on `,` and accepts a match in any part. If you tighten this back to exact-equality, MCP silently 401s and the LLM hallucinates tool calls.
 - **Runner runs as `node` (uid 1000).** Same UID as the gateway. Files written into the shared `openclaw_config` / `openclaw_workspace` volumes must not be root-owned, or the gateway can't write `AGENTS.md` / `paired.json`. Don't add `USER root` or `user: 0:0` to the runner.
-- **Runner does NOT write into `OPENCLAW_WORKSPACE_DIR`.** That dir belongs to OpenClaw (it auto-creates `AGENTS.md`, `BOOTSTRAP.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, etc.). The runner only writes to `OPENCLAW_CONFIG_DIR` and only when strictly needed.
+- **Runner only writes Nexoria-managed bootstrap files in `OPENCLAW_WORKSPACE_DIR`.** The runner may overwrite the API manifest's managed root files (`AGENTS.md`, `BOOTSTRAP.md`, `IDENTITY.md`, `SOUL.md`, `TOOLS.md`, `USER.md`, `HEARTBEAT.md`, `MEMORY.md`) plus `.nexoria-bootstrap.json`. It must not write arbitrary workspace files, generated artifacts, or result folders.
 - **Connect frame must NOT have a root-level `nonce`.** Inside `device.nonce` only. The gateway's schema validator rejects the frame with `invalid connect params: at root: unexpected property 'nonce'` — this used to silently drop the runner to a (now-removed) HTTP fallback.
 - **Pre-pair the runner during gateway boot.** The gateway's compose entrypoint runs a small Node script after `openclaw config patch` that generates the runner's Ed25519 identity (mode 0644, node-owned) if missing, then injects the deviceId into `devices/paired.json`. Without this, the runner's first `sessions.create` hits "pairing required: device is not approved yet" and dies. Don't move this step or pre-pair will run before onboard creates `devices/paired.json`.
 - **`mcp.servers.nexoria` lives in the python-generated config patch**, not a separate `openclaw mcp set` CLI call. The CLI requires a fresh /tmp/openclaw-<uid> per invocation and chained CLI calls fight for it; in-config-patch is idempotent and avoids the temp-dir flake.
@@ -267,3 +293,11 @@ Realtime chat is delegated to a managed OpenClaw gateway. Nexoria stays the cano
 | `NEXORIA_API_BASE_URL` | `http://api:3000/api/v1` | Where the gateway tells bundle-mcp our MCP server lives. |
 | `OPENCLAW_GATEWAY_URL` | `http://openclaw-gateway:18789` | Runner → gateway. |
 | `OPENCLAW_CONFIG_DIR` / `OPENCLAW_WORKSPACE_DIR` | `/openclaw-config` / `/openclaw-workspace` | Runner-side mounts of the shared `openclaw_config` / `openclaw_workspace` volumes. Same data as `/home/node/.openclaw{,/workspace}` inside the gateway. |
+
+### Nexoria-managed OpenClaw bootstrap
+
+- API endpoint: `GET /api/v1/runner/runtime/bootstrap/manifest` guarded by `RunnerTokenGuard`.
+- The API owns global v1 bootstrap templates; they are not workspace-editable yet.
+- Runner syncs the manifest after registration, writes only managed root files, and records `.nexoria-bootstrap.json` with version/hash/syncedAt.
+- Runner heartbeat metadata includes `bootstrap` status so runtime status can show the applied manifest version/hash.
+- OpenClaw's native chat compaction remains enabled, but durable memory stays canonical in Nexoria. `MEMORY.md` is a neutral policy file, not a local long-term memory store.

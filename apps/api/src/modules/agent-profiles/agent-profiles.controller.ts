@@ -31,8 +31,8 @@ export class AgentProfilesController {
 
   @Patch(':id')
   @ApiResponse({ status: 200, type: AgentProfileResponseDto })
-  update(@Param('id') id: string, @Body() dto: UpdateAgentProfileDto): Promise<AgentProfileResponseDto> {
-    return this.service.update(id, dto);
+  update(@Param('workspaceId') wsId: string, @Param('id') id: string, @Body() dto: UpdateAgentProfileDto): Promise<AgentProfileResponseDto> {
+    return this.service.update(id, dto, wsId);
   }
 
   @Delete(':id')

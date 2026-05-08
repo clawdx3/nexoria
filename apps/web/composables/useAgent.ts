@@ -1,5 +1,6 @@
 export function useAgent () {
   const agents = ref<any[]>([])
+  const enabledAgents = computed(() => agents.value.filter((agent: any) => agent.isEnabled !== false))
   const currentAgent = ref<any | null>(null)
   const isLoading = ref(false)
 
@@ -51,5 +52,5 @@ export function useAgent () {
     agents.value = agents.value.filter((a: any) => a.id !== id)
   }
 
-  return { agents, currentAgent, isLoading, fetchAgents, fetchAgent, createAgent, updateAgent, deleteAgent }
+  return { agents, enabledAgents, currentAgent, isLoading, fetchAgents, fetchAgent, createAgent, updateAgent, deleteAgent }
 }
