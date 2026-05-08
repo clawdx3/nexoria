@@ -21,10 +21,20 @@
           v-for="a in pendingApprovals"
           :key="a.id"
           :approval="a"
+          @open="openApproval(a)"
+          @edit="openApproval(a)"
+          @approve="approveApproval(a.id)"
+          @reject="rejectApproval(a.id)"
           @decided="onDecided"
         />
       </div>
     </div>
+    <ApprovalsApprovalPreview
+      v-if="selectedApproval"
+      v-model="isPreviewOpen"
+      :approval="selectedApproval"
+      @decided="onPreviewDecision"
+    />
   </div>
 </template>
 
@@ -32,13 +42,40 @@
 definePageMeta({ middleware: 'auth' })
 import { CheckCircle } from 'lucide-vue-next'
 
-const { pendingApprovals, isLoading, fetchApprovals } = useApprovals()
+const { pendingApprovals, isLoading, fetchApprovals, approve, reject } = useApprovals()
+const selectedApproval = ref<any | null>(null)
+const isPreviewOpen = ref(false)
 onMounted(() => { void fetchApprovals() })
 
 // Polling for real-time feel
 const { startPolling, stopPolling } = useRealtime()
 onMounted(() => startPolling(() => fetchApprovals(), 10000))
 onBeforeUnmount(() => stopPolling())
+
+function openApproval (approval: any) {
+  selectedApproval.value = approval
+  isPreviewOpen.value = true
+}
+
+async function approveApproval (id: string, reason?: string) {
+  await approve(id, reason)
+  onDecided()
+}
+
+async function rejectApproval (id: string, reason?: string) {
+  await reject(id, reason)
+  onDecided()
+}
+
+async function onPreviewDecision (payload: { outcome: string; reason?: string; content?: string }) {
+  if (!selectedApproval.value) return
+  if (payload.outcome === 'approve') {
+    await approveApproval(selectedApproval.value.id, payload.content || payload.reason)
+  } else if (payload.outcome === 'reject') {
+    await rejectApproval(selectedApproval.value.id, payload.reason)
+  }
+  selectedApproval.value = null
+}
 
 function onDecided () {
   useToast().add({ title: 'Decision recorded', color: 'green' })

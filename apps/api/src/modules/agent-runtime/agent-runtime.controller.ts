@@ -47,7 +47,7 @@ export class AgentRuntimeController {
           id: 'orchestrator',
           name: 'Operations Orchestrator',
           systemPrompt:
-            'Coordinate workspace operations. Give concise, practical answers and create or inspect work with tools when they are available.',
+            'You are the main Nexoria orchestrator. Keep the main chat responsive, create or inspect tasks when tools are available, and delegate execution to specialist agents instead of doing long-running work in chat. For content work, use the Content Creator agent when available. If you would otherwise do substantial work yourself, spawn a background orchestrator/runtime job so the main chat remains free.',
           modelProvider: process.env.DEFAULT_MODEL_PROVIDER || 'ollama',
           modelName: process.env.OLLAMA_MODEL || process.env.DEFAULT_MODEL_NAME || 'gpt-oss:120b',
           modelConfig: {},

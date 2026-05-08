@@ -39,11 +39,13 @@
               <p class="text-xs text-slate-500">Orchestrates agent work and creates follow-up tasks.</p>
             </div>
           </div>
-          <ChatAgentSelector
-            :agents="agents"
-            :model-value="selectedAgentId"
-            @update:model-value="selectedAgentId = $event"
-          />
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 dark:border-slate-800">
+              <ServerCog class="h-4 w-4 text-slate-500" />
+              <span class="text-xs font-medium text-slate-600 dark:text-slate-300">OpenClaw</span>
+              <UToggle v-model="useOpenClaw" size="sm" />
+            </div>
+          </div>
         </div>
 
         <div ref="scrollRef" class="flex-1 overflow-y-auto px-5 py-5">
@@ -76,10 +78,11 @@
               :role="msg.role"
               :content="msg.content"
               :agent-name="msg.agentName"
+              :action-card="msg.actionCard"
             />
             <div v-if="chatStore.isLoading" class="flex items-center gap-2 text-sm text-slate-500">
               <CommonLoadingSpinner size="sm" />
-              <span>Agent runtime is working...</span>
+              <span>{{ useOpenClaw ? 'OpenClaw is working...' : 'Agent runtime is working...' }}</span>
             </div>
           </div>
         </div>
@@ -176,7 +179,7 @@
               v-for="agent in agentRows"
               :key="agent.id"
               class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900"
-              @click="agent.id.startsWith('demo-') ? navigateTo('/settings/agents') : navigateTo(`/chat/${agent.id}`)"
+              @click="prefillDelegationPrompt(agent)"
             >
               <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                 <component :is="agent.icon" class="h-4 w-4" />
@@ -227,6 +230,7 @@ import {
   FileCheck2,
   Gauge,
   Send,
+  ServerCog,
   ShieldCheck
 } from 'lucide-vue-next'
 import type { Task } from '~/types'
@@ -238,8 +242,8 @@ const { agents, fetchAgents } = useAgent()
 const { allTasks, fetchTasks } = useTasks()
 const { approvals, fetchApprovals } = useApprovals()
 
-const selectedAgentId = ref<string | null>(null)
 const message = ref('')
+const useOpenClaw = ref(false)
 const scrollRef = ref<HTMLDivElement | null>(null)
 
 onMounted(() => {
@@ -345,8 +349,16 @@ function sendPrompt (prompt: string): void {
 function sendMessage (): void {
   const content = message.value.trim()
   if (!content || chatStore.isLoading) return
-  void chatStore.sendMessage(content, selectedAgentId.value || undefined)
+  void chatStore.sendMessage(content, 'orchestrator', useOpenClaw.value ? 'openclaw' : 'nexoria')
   message.value = ''
+}
+
+function prefillDelegationPrompt (agent: { id: string; name: string }): void {
+  if (agent.id.startsWith('demo-')) {
+    void navigateTo('/settings/agents')
+    return
+  }
+  message.value = `Ask ${agent.name} to `
 }
 
 function onKeydown (event: KeyboardEvent): void {

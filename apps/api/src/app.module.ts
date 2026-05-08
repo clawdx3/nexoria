@@ -16,6 +16,9 @@ import { PlaybooksModule } from './modules/playbooks/playbooks.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AgentRuntimeModule } from './modules/agent-runtime/agent-runtime.module';
 import { BrowserModule } from './modules/browser/browser.module';
+import { ManagedRuntimeModule } from './modules/managed-runtime/managed-runtime.module';
+import { McpModule } from './modules/mcp/mcp.module';
+import { SocialPostDraftsModule } from './modules/social-post-drafts/social-post-drafts.module';
 
 import * as entities from './database/entities';
 
@@ -53,6 +56,9 @@ import * as entities from './database/entities';
     AuditModule,
     AgentRuntimeModule,
     BrowserModule,
+    ManagedRuntimeModule,
+    McpModule,
+    SocialPostDraftsModule,
   ],
 })
 export class AppModule {}

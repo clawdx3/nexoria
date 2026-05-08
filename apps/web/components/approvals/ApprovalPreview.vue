@@ -131,17 +131,17 @@ const typeIcon = computed(() => {
 })
 
 function onApprove () {
-  emit('decided', { outcome: 'approved' })
+  emit('decided', { outcome: 'approve' })
   isOpen.value = false
 }
 
 function onReject () {
-  emit('decided', { outcome: 'rejected', reason: rejectReason.value })
+  emit('decided', { outcome: 'reject', reason: rejectReason.value })
   isOpen.value = false
 }
 
 function onEditApprove () {
-  emit('decided', { outcome: 'approved', content: editContent.value })
+  emit('decided', { outcome: 'approve', content: editContent.value })
   showInlineEdit.value = false
   isOpen.value = false
 }

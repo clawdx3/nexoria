@@ -1,0 +1,22 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
+import { Artifact } from '../../database/entities/artifact.entity';
+import { RuntimeEvent } from '../../database/entities/runtime-event.entity';
+import { RuntimeInstance } from '../../database/entities/runtime-instance.entity';
+import { RuntimeJob } from '../../database/entities/runtime-job.entity';
+import { RuntimeChatSession } from '../../database/entities/runtime-chat-session.entity';
+import { RuntimeChatMessage } from '../../database/entities/runtime-chat-message.entity';
+import { RuntimeChatCommand } from '../../database/entities/runtime-chat-command.entity';
+import { Task } from '../../database/entities/task.entity';
+import { ArtifactsController, ManagedRuntimeController, RuntimeRunnerController } from './managed-runtime.controller';
+import { ManagedRuntimeService } from './managed-runtime.service';
+import { RunnerTokenGuard } from './runner-token.guard';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([RuntimeInstance, RuntimeJob, RuntimeEvent, Artifact, RuntimeChatSession, RuntimeChatMessage, RuntimeChatCommand, Task]), AgentProfilesModule],
+  providers: [ManagedRuntimeService, RunnerTokenGuard],
+  controllers: [ManagedRuntimeController, ArtifactsController, RuntimeRunnerController],
+  exports: [ManagedRuntimeService],
+})
+export class ManagedRuntimeModule {}

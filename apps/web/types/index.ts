@@ -161,8 +161,28 @@ export interface ChatMessage {
   content: string
   agentProfileId?: string | null
   agentName?: string | null
+  actionCard?: ChatActionCard | null
   timestamp: string
 }
+
+export type ChatActionCard =
+  | {
+      type: 'approval'
+      id: string
+      title: string
+      description?: string | null
+      status: ApprovalStatus
+      metadata?: Record<string, any>
+    }
+  | {
+      type: 'task'
+      id: string
+      title: string
+      description?: string | null
+      status: TaskStatus
+      priority?: TaskPriority
+      metadata?: Record<string, any>
+    }
 
 export interface BusinessProfile {
   businessName: string
