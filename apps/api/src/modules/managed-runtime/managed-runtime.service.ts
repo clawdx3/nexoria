@@ -26,7 +26,11 @@ import {
   SendRuntimeChatMessageDto,
   UploadArtifactDto,
 } from './dto/managed-runtime.dto';
+import { MemoryContextBuilder } from '../agent-runtime/memory-context/memory-context.builder';
+import { AgentContext } from '../../shared/interfaces/agent.interfaces';
 import { BOOTSTRAP_VERSION, BOOTSTRAP_FILES, BOOTSTRAP_MANAGED_PATHS } from './bootstrap-templates';
+
+import { RunnerEventsService } from './runner-events/runner-events.service';
 
 const DEFAULT_LIMITS = {
   timeoutSeconds: 300,
@@ -56,6 +60,8 @@ export class ManagedRuntimeService {
     @InjectRepository(TaskComment) private readonly taskComments: Repository<TaskComment>,
     private readonly agentProfiles: AgentProfilesService,
     private readonly attachments: AttachmentsService,
+    private readonly memoryBuilder: MemoryContextBuilder,
+    private readonly runnerEvents: RunnerEventsService,
   ) {}
 
   async createJob(workspaceId: string, requestedByUserId: string | null, dto: CreateRuntimeJobDto): Promise<any> {
@@ -78,6 +84,12 @@ export class ManagedRuntimeService {
       agentProfileId: saved.agentProfileId,
       type: saved.type,
     });
+    if (instance) {
+      await this.runnerEvents.publish(instance.instanceKey, {
+        type: 'job',
+        data: { ...this.jobDto(saved), allowedAgentIds: await this.allowedAgentIds(workspaceId) },
+      });
+    }
     return this.jobDto(saved);
   }
 
@@ -168,9 +180,21 @@ export class ManagedRuntimeService {
       : [];
     await this.chatSessions.update(sessionId, { lastMessageAt: new Date() });
     const isFirstMessage = !session.openclawSessionKey;
+    const allowedAgentIds = await this.allowedAgentIds(workspaceId);
     const context = isFirstMessage
-      ? await this.buildRuntimeChatContext(workspaceId, userId, session.agentProfileId, await this.allowedAgentIds(workspaceId), session.metadata ?? {}, session.id)
-      : undefined;
+      ? await this.buildRuntimeChatContext(workspaceId, userId, session.agentProfileId, allowedAgentIds, session.metadata ?? {}, session.id)
+      : {
+          workspaceId,
+          userId,
+          chatSessionId: session.id,
+          agentProfileId: session.agentProfileId,
+          allowedAgentIds,
+          instructions: [
+            `Your active workspaceId is "${workspaceId}". Pass this exact value whenever a Nexoria MCP tool requires a workspaceId — never invent or substitute another id.`,
+            `Your active chatSessionId is "${session.id}". Pass this exact value as chatSessionId whenever calling enqueue_specialist_job.`,
+            `Use only the approved agent id ${session.agentProfileId}.`,
+          ],
+        };
     await this.enqueueChatCommand(session, 'send_message', {
       userMessageId: message.id,
       content: dto.content,
@@ -621,7 +645,7 @@ export class ManagedRuntimeService {
   }
 
   private async enqueueChatCommand(session: RuntimeChatSession, type: RuntimeChatCommandType, payload: Record<string, any>): Promise<RuntimeChatCommand> {
-    return this.chatCommands.save(this.chatCommands.create({
+    const command = await this.chatCommands.save(this.chatCommands.create({
       workspaceId: session.workspaceId,
       sessionId: session.id,
       instanceId: session.instanceId,
@@ -629,6 +653,19 @@ export class ManagedRuntimeService {
       status: 'queued',
       payload,
     }));
+    const instance = session.instanceId ? await this.instances.findOne({ where: { id: session.instanceId } }) : null;
+    if (instance) {
+      const allowedAgentIds = await this.allowedAgentIds(session.workspaceId);
+      await this.runnerEvents.publish(instance.instanceKey, {
+        type: 'chat_command',
+        data: {
+          ...this.chatCommandDto(command),
+          session: this.chatSessionDto(session),
+          allowedAgentIds,
+        },
+      });
+    }
+    return command;
   }
 
   private async saveChatMessage(workspaceId: string, sessionId: string, role: RuntimeChatMessageRole, content: string, status: 'pending' | 'streaming' | 'completed' | 'error', metadata: Record<string, any> = {}): Promise<RuntimeChatMessage> {
@@ -660,6 +697,32 @@ export class ManagedRuntimeService {
     const enabledAgents = await this.agentProfiles.findEnabledByWorkspace(workspaceId);
     const recentAttachments = await this.attachments.list(workspaceId, { limit: 20 });
     const taskContext = metadata.taskId ? await this.taskContext(workspaceId, String(metadata.taskId)) : null;
+    // Inject 4-tier memory context into the OpenClaw chat instructions
+    let memoryText = '';
+    try {
+      const profile = await this.agentProfiles.findOne(agentProfileId);
+      const agentCtx: AgentContext = {
+        workspaceId,
+        triggeredByUserId: userId,
+        userRole: 'user',
+        autonomyLevel: 1,
+        sessionId: chatSessionId ?? undefined,
+        agentProfile: {
+          id: agentProfileId,
+          name: profile?.name ?? agentProfileId,
+          systemPrompt: profile?.systemPrompt ?? '',
+          modelProvider: 'openai',
+          modelName: 'gpt-4o',
+          enabledTools: profile?.enabledTools ?? [],
+          role: profile?.role ?? 'orchestrator',
+        },
+      };
+      const memory = await this.memoryBuilder.build(agentCtx);
+      memoryText = this.memoryBuilder.formatForPrompt(memory);
+    } catch (err: any) {
+      // silently skip memory injection if anything fails
+    }
+
     return {
       workspaceId,
       userId,
@@ -686,6 +749,7 @@ export class ManagedRuntimeService {
       taskContext,
       instructions: [
         'You are running behind Nexoria managed OpenClaw chat.',
+        ...(memoryText ? [`Durable memory context for this workspace/user:\n${memoryText}`] : []),
         isOrchestrator
           ? 'You are the main Nexoria orchestrator. Stay focused on understanding the user, planning work, creating tasks/approvals, and delegating execution to background agents. Do not perform long-running work inside the main chat.'
           : 'You are a specialist agent working on delegated execution behind Nexoria.',
