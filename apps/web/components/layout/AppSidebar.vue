@@ -26,17 +26,17 @@
     <!-- Nav -->
     <nav style="padding:0 8px;flex:1;overflow-y:auto;">
       <div style="padding:0 4px;">
-        <NavItem v-for="item in mainNav" :key="item.to" :item="item" :current="route.path" />
+        <LayoutNavItem v-for="item in mainNav" :key="item.to" :item="item" :current="route.path" />
       </div>
 
       <div class="nx-nav-group"><span>Build</span></div>
       <div style="padding:0 4px;">
-        <NavItem v-for="item in buildNav" :key="item.to" :item="item" :current="route.path" />
+        <LayoutNavItem v-for="item in buildNav" :key="item.to" :item="item" :current="route.path" />
       </div>
 
       <div class="nx-nav-group"><span>Operations</span></div>
       <div style="padding:0 4px;">
-        <NavItem v-for="item in opsNav" :key="item.to" :item="item" :current="route.path" />
+        <LayoutNavItem v-for="item in opsNav" :key="item.to" :item="item" :current="route.path" />
       </div>
     </nav>
 
