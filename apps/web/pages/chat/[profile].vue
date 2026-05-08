@@ -32,7 +32,7 @@
     </div>
 
     <!-- Chat area -->
-    <div style="display:flex;flex-direction:column;min-width:0;">
+    <div style="display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;">
       <!-- Chat header -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--line);">
         <div style="display:flex;align-items:center;gap:12px;">
@@ -151,12 +151,20 @@
         </div>
 
         <div class="text-tiny" style="margin:20px 0 10px;">Recent files</div>
-        <div style="display:flex;flex-direction:column;gap:6px;">
-          <div v-for="f in recentFiles" :key="f.name" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-sunk);">
+        <div v-if="recentFiles.length === 0" style="font-size:11px;color:var(--muted);padding:6px 2px;">No files yet.</div>
+        <div v-else style="display:flex;flex-direction:column;gap:6px;">
+          <a
+            v-for="f in recentFiles"
+            :key="f.id"
+            :href="artifactUrl(f)"
+            target="_blank"
+            rel="noopener"
+            style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-sunk);text-decoration:none;color:inherit;"
+          >
             <FileIcon :size="13" />
-            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.name }}</span>
-            <span style="font-size:11px;color:var(--muted);font-family:var(--font-mono);">{{ f.size }}</span>
-          </div>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.filename }}</span>
+            <span style="font-size:11px;color:var(--muted);font-family:var(--font-mono);">{{ formatSize(f.sizeBytes) }}</span>
+          </a>
         </div>
       </div>
     </div>
@@ -173,7 +181,7 @@ const route = useRoute()
 const { agents: rawAgents, fetchAgents } = useAgent()
 const chatStore = useChatStore()
 
-onMounted(() => { void fetchAgents() })
+onMounted(() => { void fetchAgents(); void fetchRuntime() })
 
 const currentAgentId = computed(() => route.params.profile as string || 'orchestrator')
 const allAgents = computed(() => rawAgents.value)
@@ -196,11 +204,15 @@ const starterPrompts = [
   'Draft a reply to last week\'s reviews',
 ]
 
-const recentFiles = [
-  { name: 'competitor-sweep.md', size: '12 KB' },
-  { name: 'spring-carousel-1.png', size: '1.4 MB' },
-  { name: 'april-newsletter.txt', size: '8 KB' },
-]
+const { artifacts, fetchRuntime, artifactUrl } = useManagedRuntime()
+const recentFiles = computed(() => artifacts.value.slice(0, 5))
+
+function formatSize (bytes?: number | null) {
+  if (!bytes) return '—'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 function sendPrompt (p: string) {
   message.value = p

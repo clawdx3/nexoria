@@ -30,21 +30,23 @@
         style="display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;align-items:center;padding:14px 18px;"
         :style="{ borderBottom: i < filteredMemories.length - 1 ? '1px solid var(--line)' : 'none' }"
       >
-        <span class="nx-tag dot" :class="typeTone(m.type)">{{ m.type || 'fact' }}</span>
-        <div>
-          <div style="font-size:13px;font-weight:500;">{{ m.content || m.text }}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">{{ m.source || 'Learned automatically' }} · used {{ m.useCount || 0 }} times</div>
+        <span class="nx-tag dot" :class="typeTone(m.type)">{{ m.type }}</span>
+        <div style="min-width:0;">
+          <div style="font-size:13px;font-weight:500;">{{ m.content }}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+            <span style="text-transform:capitalize;">{{ m.tier }}</span> · {{ m.positiveUses }} kept · {{ m.negativeUses }} rejected
+          </div>
         </div>
         <div style="width:110px;">
           <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
             <span style="font-size:11px;color:var(--muted);">Confidence</span>
-            <span style="font-size:11px;font-family:var(--font-mono);">{{ Math.round((m.confidence || 0.8) * 100) }}%</span>
+            <span style="font-size:11px;font-family:var(--font-mono);">{{ Math.round(m.confidence * 100) }}%</span>
           </div>
-          <div class="nx-bar"><span class="nx-bar-fill" :style="{ width: Math.round((m.confidence || 0.8) * 100) + '%' }" /></div>
+          <div class="nx-bar"><span class="nx-bar-fill" :style="{ width: Math.round(m.confidence * 100) + '%' }" /></div>
         </div>
         <div style="display:flex;gap:4px;">
-          <button class="nx-icon-btn" title="Keep"><Check :size="14" /></button>
-          <button class="nx-icon-btn" title="Forget"><Trash :size="14" /></button>
+          <button class="nx-icon-btn" title="Keep" @click="reviewMemory(m.id, 'approve')"><Check :size="14" /></button>
+          <button class="nx-icon-btn" title="Forget" @click="reviewMemory(m.id, 'reject')"><Trash :size="14" /></button>
         </div>
       </div>
     </div>
@@ -56,14 +58,14 @@ import { Download, Check, Trash } from 'lucide-vue-next'
 
 definePageMeta({ middleware: 'auth' })
 
-const { memories, isLoading, fetchMemories } = useMemory()
+const { memories, isLoading, fetchMemories, reviewMemory } = useMemory()
 onMounted(() => { void fetchMemories() })
 
-const types = ['preference', 'fact', 'pattern', 'rule']
+const types = computed(() => Array.from(new Set(memories.value.map((m: any) => m.type).filter(Boolean))))
 const filter = ref('all')
 const filteredMemories = computed(() => {
   if (filter.value === 'all') return memories.value
-  return memories.value.filter((m: any) => (m.type || 'fact') === filter.value)
+  return memories.value.filter((m: any) => m.type === filter.value)
 })
 
 function typeTone (type: string) {

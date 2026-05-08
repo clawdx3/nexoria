@@ -88,10 +88,5 @@ const cadences = [
   { id: 'custom', label: 'Custom' },
 ]
 
-// Placeholder schedules — real API would come from a composable
-const schedules = ref([
-  { id: 's1', agentName: 'Social Media', name: 'Daily Instagram check-in', cadence: 'Every day at 09:00', nextRun: 'Tomorrow 09:00', enabled: true },
-  { id: 's2', agentName: 'Researcher', name: 'Weekly competitor sweep', cadence: 'Mondays at 08:00', nextRun: 'Mon, Apr 27', enabled: true },
-  { id: 's3', agentName: 'Writer', name: 'Monthly newsletter draft', cadence: '1st of month, 10:00', nextRun: 'May 1', enabled: false },
-])
+const schedules = ref<any[]>([])
 </script>
