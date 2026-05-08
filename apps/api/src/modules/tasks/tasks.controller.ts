@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import { Response } from 'express';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto, UpdateTaskDto, TaskResponseDto } from './dto/create-task.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -15,6 +16,24 @@ export class TasksController {
   @ApiResponse({ status: 200, type: [TaskResponseDto] })
   findByWorkspace(@Param('workspaceId') wsId: string): Promise<TaskResponseDto[]> {
     return this.service.findByWorkspace(wsId);
+  }
+
+  @Get('events')
+  @ApiResponse({ status: 200 })
+  events(@Param('workspaceId') wsId: string, @Res() res: Response): void {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    res.write(': connected\n\n');
+    const subscription = this.service.streamWorkspaceEvents(wsId).subscribe((event) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
+    const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
+    res.on('close', () => {
+      clearInterval(heartbeat);
+      subscription.unsubscribe();
+    });
   }
 
   @Get(':id')

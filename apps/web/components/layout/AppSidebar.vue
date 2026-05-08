@@ -108,7 +108,8 @@ import {
   Brain,
   Plug,
   SlidersHorizontal,
-  Plus
+  Plus,
+  ServerCog
 } from 'lucide-vue-next'
 
 const { agents, isLoading, fetchAgents } = useAgent()
@@ -122,6 +123,7 @@ const topNav = [
   { label: 'Tasks', to: '/tasks', icon: CheckCircle },
   { label: 'Approvals', to: '/approvals', icon: FileCheck, badge: '3' },
   { label: 'Memory', to: '/settings/memory', icon: Brain },
+  { label: 'Runtime', to: '/settings/runtime', icon: ServerCog },
   { label: 'Integrations', to: '/settings/integrations', icon: Plug },
   { label: 'Chat', to: '/', icon: MessageSquare }
 ]

@@ -9,6 +9,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/openclaw-runner/package.json apps/openclaw-runner/package.json
 COPY shared/types/package.json shared/types/package.json
 RUN pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.json

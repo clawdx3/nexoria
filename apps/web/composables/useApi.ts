@@ -4,7 +4,7 @@ function apiBase (): string {
   return useRuntimeConfig().public.apiBaseUrl as string
 }
 
-function getHeaders (): Record<string, string> {
+export function getApiHeaders (): Record<string, string> {
   const token = useCookie('access_token').value
   const workspace = useCookie('workspace_id').value
   const headers: Record<string, string> = {
@@ -24,7 +24,7 @@ export async function useApi<T> (
   const options: NitroFetchOptions<NitroFetchRequest> = {
     ...opts,
     headers: {
-      ...getHeaders(),
+      ...getApiHeaders(),
       ...(opts?.headers || {})
     } as any
   }
@@ -48,8 +48,22 @@ export async function useApiRaw (
   return $fetch.raw(url, {
     ...opts,
     headers: {
-      ...getHeaders(),
+      ...getApiHeaders(),
       ...(opts?.headers || {})
     } as any
+  })
+}
+
+export async function useApiStream (
+  endpoint: string,
+  opts?: RequestInit
+): Promise<Response> {
+  const url = `${apiBase()}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
+  return fetch(url, {
+    ...opts,
+    headers: {
+      ...getApiHeaders(),
+      ...(opts?.headers || {})
+    }
   })
 }

@@ -23,7 +23,7 @@ AI-powered agent platform for small businesses.
           auth/
           users/
           workspaces/
-          tasks/
+          tasks/                # SSE events at /workspaces/:wsId/tasks/events
           missions/
           approvals/
           agent-profiles/
@@ -31,22 +31,25 @@ AI-powered agent platform for small businesses.
           integrations/
           playbooks/
           audit/
-          agent-runtime/     # Core agent engine
+          agent-runtime/        # Legacy first-party agent engine (still used for RuntimeJob)
             executor/
             tool-registry/
             llm-provider/
             memory-context/
             reflection/
+          managed-runtime/      # Bridges Nexoria chat ↔ OpenClaw via the runner
+          mcp/                  # MCP server: GET /api/v1/mcp (SSE) + POST /messages
           tools/
         common/
         config/
         database/entities/
       test/
-    web/          # Nuxt 3 frontend
+    openclaw-runner/  # Sidecar that talks to the OpenClaw gateway over WS
+    web/              # Nuxt 3 frontend
       components/   # Chat, Tasks, Approvals, Layout
       composables/  # API wrappers, stores
       pages/        # Dashboard, Chat, Tasks, Approvals, Settings
-      stores/       # Pinia stores
+      stores/       # Pinia stores (tasks.store now subscribes to SSE for live updates)
   docker-compose.yml
   .env.example
   README.md
@@ -98,9 +101,15 @@ docker compose up -d
 Services:
 - `postgres` - PostgreSQL 16 + pgvector
 - `redis` - Redis 7
-- `api` - NestJS API server
+- `api` - NestJS API server (now also hosts the MCP server at `/api/v1/mcp`)
 - `worker` - BullMQ worker container
 - `migrate` - TypeORM migration runner (run on demand)
+- `openclaw-gateway` - OpenClaw chat runtime; internal-only on `:18789` (never expose to the host)
+- `openclaw-runner` - Sidecar bridging Nexoria chat sessions ↔ OpenClaw gateway over WS
+- `web` - Nuxt 3 frontend
+- `camofox` - Anti-detection browser used by tools
+
+The `openclaw-gateway` entrypoint pre-pairs the runner's Ed25519 device on first boot and registers the Nexoria MCP server (`mcp.servers.nexoria`) into its config — both are idempotent, so wiping the openclaw volumes and bringing the stack up clean Just Works.
 
 ## Key Commands
 
@@ -119,6 +128,11 @@ Services:
 - Versioned via URL (`/api/v1/...`)
 - Bearer JWT auth required for most endpoints
 - Workspace-scoped routes: `/api/v1/workspaces/:workspaceId/:resource`
+- Server-sent events: `/api/v1/workspaces/:workspaceId/tasks/events`, `/api/v1/workspaces/:workspaceId/runtime/chat/sessions/:sessionId/events`
+- MCP server (consumed by the OpenClaw gateway, not by end users):
+  - `GET /api/v1/mcp` — opens an SSE channel; emits the `endpoint` event with the messages URL
+  - `POST /api/v1/mcp/messages?sessionId=…` — JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`)
+  - Auth: `Authorization: Bearer $NEXORIA_MCP_TOKEN` (header may be repeated; both values accepted)
 
 ## Testing
 

@@ -2,7 +2,7 @@
   <UCard class="transition hover:shadow-md">
     <div class="flex items-start gap-4">
       <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
-        <component :is="typeIcon" class="h-5 w-5 text-slate-500" />
+        <component :is="inferredIcon" class="h-5 w-5 text-slate-500" />
       </div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">

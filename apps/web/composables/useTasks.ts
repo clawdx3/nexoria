@@ -13,6 +13,8 @@ export function useTasks () {
     fetchTasks: store.fetchTasks,
     createTask: store.createTask,
     updateTask: store.updateTask,
-    deleteTask: store.deleteTask
+    deleteTask: store.deleteTask,
+    subscribe: store.subscribe,
+    unsubscribe: store.unsubscribe
   }
 }

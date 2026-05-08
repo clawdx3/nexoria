@@ -3,11 +3,13 @@
     <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-4 dark:border-slate-800">
       <Bot class="h-6 w-6 text-indigo-500" />
       <div>
-        <h1 class="text-lg font-semibold">{{ agent?.name || 'Agent' }}</h1>
-        <p class="text-sm text-slate-500">{{ agent?.description || '' }}</p>
+        <h1 class="text-lg font-semibold">Team Lead</h1>
+        <p class="text-sm text-slate-500">
+          Delegates to {{ agent?.name || 'the selected agent' }} when work should move.
+        </p>
       </div>
     </div>
-    <ChatWindow :agent-profile-id="route.params.profile as string" />
+    <ChatWindow />
   </div>
 </template>
 

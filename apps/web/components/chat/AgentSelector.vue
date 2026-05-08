@@ -31,16 +31,16 @@ const emit = defineEmits<{
 }>()
 
 const options = computed(() => [
-  { id: null, name: 'Orchestrator (Team Lead)' },
+  { id: 'orchestrator', name: 'Orchestrator (Team Lead)' },
   ...props.agents
 ])
 
 const selected = computed({
-  get: () => props.modelValue,
-  set: (val: string | null) => emit('update:modelValue', val)
+  get: () => props.modelValue ?? 'orchestrator',
+  set: (val: string) => emit('update:modelValue', val === 'orchestrator' ? null : val)
 })
 
-function onChange (val: string | null) {
-  emit('update:modelValue', val)
+function onChange (val: string) {
+  emit('update:modelValue', val === 'orchestrator' ? null : val)
 }
 </script>

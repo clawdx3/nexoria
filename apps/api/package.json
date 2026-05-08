@@ -15,6 +15,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^0.0.37",
     "@mailerlite/mailerlite-nodejs": "^1.6.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@nestjs/bullmq": "^10.1.0",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.2.0",

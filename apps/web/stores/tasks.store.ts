@@ -7,6 +7,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const tasks = ref<Task[]>([])
   const filter = ref<TaskFilterStatus>('all')
   const isLoading = ref(false)
+  const eventsAbort = ref<AbortController | null>(null)
 
   const filteredTasks = computed(() => {
     if (filter.value === 'all') return tasks.value
@@ -64,6 +65,61 @@ export const useTasksStore = defineStore('tasks', () => {
     tasks.value = tasks.value.filter(t => t.id !== id)
   }
 
+  function applyEvent (event: { type: string; task?: Task; taskId?: string }): void {
+    if ((event.type === 'task.created' || event.type === 'task.updated') && event.task) {
+      const idx = tasks.value.findIndex(t => t.id === event.task!.id)
+      if (idx === -1) tasks.value.unshift(event.task)
+      else tasks.value[idx] = { ...tasks.value[idx], ...event.task }
+      return
+    }
+    if (event.type === 'task.deleted' && event.taskId) {
+      tasks.value = tasks.value.filter(t => t.id !== event.taskId)
+    }
+  }
+
+  async function subscribe (wsId?: string): Promise<void> {
+    if (eventsAbort.value) return
+    const workspaceId = wsId || await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+    const controller = new AbortController()
+    eventsAbort.value = controller
+    void readEvents(workspaceId, controller)
+  }
+
+  function unsubscribe (): void {
+    eventsAbort.value?.abort()
+    eventsAbort.value = null
+  }
+
+  async function readEvents (workspaceId: string, controller: AbortController): Promise<void> {
+    try {
+      const response = await useApiStream(`/workspaces/${workspaceId}/tasks/events`, {
+        signal: controller.signal,
+        headers: { Accept: 'text/event-stream' }
+      })
+      if (!response.ok || !response.body) throw new Error(`tasks stream failed (${response.status})`)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (!controller.signal.aborted) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const chunks = buffer.split('\n\n')
+        buffer = chunks.pop() || ''
+        for (const chunk of chunks) {
+          const dataLine = chunk.split('\n').find(line => line.startsWith('data:'))
+          if (!dataLine) continue
+          try { applyEvent(JSON.parse(dataLine.replace(/^data:\s*/, ''))) } catch { /* ignore malformed */ }
+        }
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) console.warn('[tasks] stream disconnected', err)
+    } finally {
+      if (eventsAbort.value === controller) eventsAbort.value = null
+    }
+  }
+
   return {
     tasks,
     filter,
@@ -72,6 +128,8 @@ export const useTasksStore = defineStore('tasks', () => {
     fetchTasks,
     createTask,
     updateTask,
-    deleteTask
+    deleteTask,
+    subscribe,
+    unsubscribe
   }
 })

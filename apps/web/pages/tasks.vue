@@ -76,9 +76,10 @@ definePageMeta({ middleware: 'auth' })
 import { Plus, CheckCircle } from 'lucide-vue-next'
 import type { Task } from '~/types'
 
-const { tasks, isLoading, fetchTasks, createTask, updateTask: patchTask, deleteTask: removeTask, filter } = useTasks()
+const { tasks, isLoading, fetchTasks, createTask, updateTask: patchTask, deleteTask: removeTask, filter, subscribe, unsubscribe } = useTasks()
 const { fetchAgents } = useAgent()
-onMounted(() => { void fetchTasks(); void fetchAgents() })
+onMounted(() => { void fetchTasks(); void fetchAgents(); void subscribe() })
+onBeforeUnmount(() => { unsubscribe() })
 
 function setFilter (v: string) {
   filter.value = v as any
