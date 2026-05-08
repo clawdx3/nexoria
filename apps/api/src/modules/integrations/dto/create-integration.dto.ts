@@ -3,8 +3,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IntegrationStatus, IntegrationType } from '../../../database/entities/integration.entity';
 
 export class CreateIntegrationDto {
-  @ApiProperty({ enum: ['facebook', 'instagram', 'shopify', 'woocommerce', 'mailchimp', 'stripe', 'custom'] })
-  @IsEnum(['facebook', 'instagram', 'shopify', 'woocommerce', 'mailchimp', 'stripe', 'custom'])
+  @ApiProperty({ enum: ['facebook', 'instagram', 'gmail', 'mailerlite', 'shopify', 'woocommerce', 'mailchimp', 'stripe', 'custom'] })
+  @IsEnum(['facebook', 'instagram', 'gmail', 'mailerlite', 'shopify', 'woocommerce', 'mailchimp', 'stripe', 'custom'])
   type: IntegrationType;
 
   @ApiProperty({ example: 'Facebook Page' })

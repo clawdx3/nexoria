@@ -15,7 +15,6 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { PlaybooksModule } from './modules/playbooks/playbooks.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AgentRuntimeModule } from './modules/agent-runtime/agent-runtime.module';
-import { ToolsModule } from './modules/tools/tools.module';
 import { BrowserModule } from './modules/browser/browser.module';
 
 import * as entities from './database/entities';
@@ -53,7 +52,6 @@ import * as entities from './database/entities';
     PlaybooksModule,
     AuditModule,
     AgentRuntimeModule,
-    ToolsModule,
     BrowserModule,
   ],
 })

@@ -9,8 +9,8 @@ import {
 } from 'typeorm';
 import { Workspace } from './workspace.entity';
 
-export type IntegrationType = 'facebook' | 'instagram' | 'shopify' | 'woocommerce' | 'mailchimp' | 'stripe' | 'custom';
-export type IntegrationStatus = 'connected' | 'disconnected' | 'error' | 'refreshing';
+export type IntegrationType = 'facebook' | 'instagram' | 'gmail' | 'mailerlite' | 'shopify' | 'woocommerce' | 'mailchimp' | 'stripe' | 'custom';
+export type IntegrationStatus = 'connected' | 'disconnected' | 'error' | 'refreshing' | 'pending_selection';
 
 @Entity('integrations')
 export class Integration {
@@ -24,7 +24,7 @@ export class Integration {
   @JoinColumn({ name: 'workspaceId' })
   workspace: Workspace;
 
-  @Column({ type: 'enum', enum: ['facebook', 'instagram', 'shopify', 'woocommerce', 'mailchimp', 'stripe', 'custom'] })
+  @Column({ type: 'enum', enum: ['facebook', 'instagram', 'gmail', 'mailerlite', 'shopify', 'woocommerce', 'mailchimp', 'stripe', 'custom'] })
   type: IntegrationType;
 
   @Column()

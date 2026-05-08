@@ -31,7 +31,29 @@ export class IntegrationsService {
     return items.map((i) => this.toDto(i));
   }
 
-  async update(id: string, dto: UpdateIntegrationDto): Promise<IntegrationResponseDto> {
+  async findByWorkspaceAndType(workspaceId: string, type: IntegrationType): Promise<Integration | null> {
+    return this.repo.findOne({ where: { workspaceId, type }, order: { updatedAt: 'DESC' } });
+  }
+
+  async selectFacebookPage(workspaceId: string, pageId?: string, pageName?: string): Promise<IntegrationResponseDto> {
+    const integration = await this.findByWorkspaceAndType(workspaceId, 'facebook');
+    if (!integration) throw new NotFoundException('Facebook integration not found');
+    await this.update(integration.id, {
+      credentials: { ...(integration.credentials || {}), pageId, pageName },
+    });
+    return this.findOne(integration.id);
+  }
+
+  async selectInstagramAccount(workspaceId: string, pageId?: string, accountId?: string): Promise<IntegrationResponseDto> {
+    const integration = await this.findByWorkspaceAndType(workspaceId, 'instagram');
+    if (!integration) throw new NotFoundException('Instagram integration not found');
+    await this.update(integration.id, {
+      credentials: { ...(integration.credentials || {}), pageId, instagramAccountId: accountId },
+    });
+    return this.findOne(integration.id);
+  }
+
+  async update(id: string, dto: Partial<Pick<Integration, 'name' | 'status' | 'credentials' | 'settings' | 'metadata' | 'lastSyncedAt' | 'expiresAt'>>): Promise<IntegrationResponseDto> {
     await this.repo.update(id, dto);
     return this.findOne(id);
   }
