@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS base
+FROM node:20-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
@@ -15,6 +15,7 @@ RUN pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.json
 COPY apps/api apps/api
 COPY shared shared
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN pnpm --filter @nexoria/api build
 
 FROM base AS production
