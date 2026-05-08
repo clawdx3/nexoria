@@ -54,5 +54,13 @@ export function useAttachments () {
     return res.downloadUrl
   }
 
-  return { uploadFiles, downloadUrl }
+  async function listByTask (taskId: string): Promise<Attachment[]> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return []
+    return useApi<Attachment[]>(`/workspaces/${workspaceId}/attachments`, {
+      query: { taskId }
+    })
+  }
+
+  return { uploadFiles, downloadUrl, listByTask }
 }

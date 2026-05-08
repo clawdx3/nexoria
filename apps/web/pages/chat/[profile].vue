@@ -83,15 +83,21 @@
                   <span style="font-size:11px;color:var(--muted);">just now</span>
                 </div>
                 <div style="font-size:14px;line-height:1.55;white-space:pre-wrap;">{{ msg.content }}</div>
-                <div v-if="msg.actionCard" style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg-sunk);display:flex;align-items:center;gap:12px;">
-                  <span style="width:28px;height:28px;border-radius:8px;background:var(--accent-soft);color:var(--accent-soft-ink);display:inline-flex;align-items:center;justify-content:center;"><ArrowRight :size="14" /></span>
-                  <div style="flex:1;">
-                    <div style="font-size:11px;color:var(--muted);">Delegated to</div>
-                    <div style="font-size:13px;font-weight:600;">{{ msg.actionCard.agentName }}</div>
-                    <div style="font-size:11px;color:var(--muted);margin-top:2px;">"{{ msg.actionCard.task }}"</div>
+                <button
+                  v-if="msg.actionCard"
+                  style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg-sunk);display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;"
+                  @click="openActionCard(msg.actionCard)"
+                >
+                  <span style="width:28px;height:28px;border-radius:8px;background:var(--accent-soft);color:var(--accent-soft-ink);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <CheckSquare v-if="msg.actionCard.type === 'task'" :size="14" />
+                    <Shield v-else :size="14" />
+                  </span>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:11px;color:var(--muted);">{{ msg.actionCard.type === 'task' ? 'Task' : 'Approval' }} created</div>
+                    <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ msg.actionCard.title }}</div>
                   </div>
-                  <span class="nx-tag info dot">running</span>
-                </div>
+                  <span class="nx-tag dot" :class="actionCardTone(msg.actionCard.status)">{{ String(msg.actionCard.status).replace('_', ' ') }}</span>
+                </button>
               </div>
             </div>
           </template>
@@ -172,7 +178,7 @@
 </template>
 
 <script setup lang="ts">
-import { Plus, Server, MoreHorizontal, Paperclip, Mic, Send, ArrowRight } from 'lucide-vue-next'
+import { Plus, Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield } from 'lucide-vue-next'
 import { File as FileIcon } from 'lucide-vue-next'
 
 definePageMeta({ middleware: 'auth' })
@@ -237,4 +243,17 @@ watch(() => chatStore.messages.length, async () => {
   await nextTick()
   if (scrollRef.value) scrollRef.value.scrollTop = scrollRef.value.scrollHeight
 })
+
+function openActionCard (card: any) {
+  if (card.type === 'task') navigateTo('/tasks')
+  else navigateTo('/approvals')
+}
+
+function actionCardTone (status: string) {
+  if (status === 'done' || status === 'approved' || status === 'completed') return 'ok'
+  if (status === 'in_progress' || status === 'pending') return 'info'
+  if (status === 'review') return 'accent'
+  if (status === 'rejected' || status === 'cancelled' || status === 'failed') return 'danger'
+  return 'warn'
+}
 </script>

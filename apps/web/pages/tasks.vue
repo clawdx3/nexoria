@@ -50,7 +50,7 @@
             style="padding:12px;text-align:left;display:block;cursor:pointer;transition:border-color .12s,transform .08s;width:100%;"
             @mouseenter="(e: MouseEvent) => (e.currentTarget as HTMLElement).style.borderColor = 'var(--line-strong)'"
             @mouseleave="(e: MouseEvent) => (e.currentTarget as HTMLElement).style.borderColor = ''"
-            @click="navigateTo('/chat')"
+            @click="openTask(t.id)"
           >
             <div v-if="t.metadata?.missionName" style="font-size:11px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:4px;">
               <Hash :size="11" /> {{ t.metadata.missionName }}
@@ -77,13 +77,14 @@
       <div
         v-for="(t, i) in filteredTasks"
         :key="t.id"
-        style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:14px;align-items:center;padding:14px 16px;"
+        style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:14px;align-items:center;padding:14px 16px;cursor:pointer;"
         :style="{ borderBottom: i < filteredTasks.length - 1 ? '1px solid var(--line)' : 'none' }"
+        @click="openTask(t.id)"
       >
         <span
           style="width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line-strong);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;"
           :style="t.status === 'done' ? { background: 'var(--ok)', borderColor: 'var(--ok)' } : {}"
-          @click="toggleDone(t)"
+          @click.stop="toggleDone(t)"
         >
           <Check v-if="t.status === 'done'" :size="11" style="color:white;" />
         </span>
@@ -124,6 +125,8 @@
       </div>
     </template>
 
+    <TasksTaskDrawer :open="!!selectedTaskId" :task-id="selectedTaskId" @close="selectedTaskId = null" @updated="fetchTasks" />
+
   </div>
 </template>
 
@@ -143,6 +146,11 @@ const filter = ref('all')
 const showCreate = ref(false)
 const creating = ref(false)
 const createForm = reactive({ title: '', description: '' })
+const selectedTaskId = ref<string | null>(null)
+
+function openTask (id: string) {
+  selectedTaskId.value = id
+}
 
 const cols = [
   { id: 'pending', label: 'Pending', tone: 'warn' },
