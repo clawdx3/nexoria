@@ -1,145 +1,110 @@
 <template>
-  <aside
-    class="flex h-screen w-[276px] shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
-  >
-    <div class="flex h-16 items-center gap-3 border-b border-slate-200 px-5 dark:border-slate-800">
-      <img src="/logo.svg" alt="Nexoria" class="h-9 w-9 rounded-lg" />
-      <div class="min-w-0">
-        <div class="text-[15px] font-semibold tracking-tight">Nexoria</div>
-        <div class="text-xs text-slate-500 dark:text-slate-400">Agent operations</div>
-      </div>
+  <aside class="nx-sidebar">
+    <!-- Workspace switcher -->
+    <div style="padding: 12px 12px 6px;">
+      <button style="display:flex;align-items:center;gap:10px;width:100%;padding:8px;border-radius:10px;background:var(--bg-sunk);border:1px solid var(--line);text-align:left;">
+        <span style="width:28px;height:28px;border-radius:8px;background:var(--accent);color:var(--accent-ink);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;letter-spacing:-0.02em;flex-shrink:0;">
+          {{ workspaceInitials }}
+        </span>
+        <span class="nx-ws-meta" style="min-width:0;flex:1;">
+          <span style="display:block;font-size:13px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ workspaceName }}</span>
+          <span style="display:block;font-size:11px;color:var(--muted);line-height:1.2;">{{ workspacePlan }}</span>
+        </span>
+        <ChevronDown class="nx-ws-meta" :size="14" style="color:var(--muted);flex-shrink:0;" />
+      </button>
     </div>
 
-    <nav class="flex-1 overflow-y-auto px-3 py-4">
-      <div class="px-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-        Workspace
-      </div>
-      <NuxtLink
-        v-for="item in topNav"
-        :key="item.to"
-        :to="item.to"
-        :class="[
-          'mb-1 flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition',
-          isActive(item.to)
-            ? 'bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950'
-            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
-        ]"
-      >
-        <component :is="item.icon" class="h-4 w-4 shrink-0" />
-        <span>{{ item.label }}</span>
-        <span v-if="item.badge" class="ml-auto rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300">
-          {{ item.badge }}
-        </span>
-      </NuxtLink>
+    <!-- Command bar -->
+    <div style="padding:6px 12px 8px;">
+      <button @click="emit('cmdK')" style="display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 10px;border-radius:8px;background:transparent;border:1px solid var(--line);color:var(--muted);font-size:12.5px;text-align:left;">
+        <Search :size="14" />
+        <span class="nx-ws-meta" style="flex:1;">Search or ask…</span>
+        <span class="nx-kbd nx-ws-meta">⌘K</span>
+      </button>
+    </div>
 
-      <div class="mt-6">
-        <div class="mb-2 flex items-center justify-between px-2">
-          <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Active agents
-          </div>
-          <button class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200" @click="navigateTo('/settings/agents')">
-            <Plus class="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <div v-if="isLoading" class="px-3 py-2">
-          <CommonLoadingSpinner size="sm" />
-        </div>
-        <NuxtLink
-          v-for="agent in agents"
-          :key="agent.id"
-          :to="`/chat/${agent.id}`"
-          :class="[
-            'mb-1 flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition',
-            route.path === `/chat/${agent.id}`
-              ? 'bg-cyan-50 text-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-200'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
-          ]"
-        >
-          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-            <Bot class="h-3.5 w-3.5" />
-          </span>
-          <span class="truncate">{{ agent.name }}</span>
-        </NuxtLink>
-        <div v-if="!isLoading && agents.length === 0" class="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500 dark:border-slate-800">
-          No agents in this workspace.
-        </div>
+    <!-- Nav -->
+    <nav style="padding:0 8px;flex:1;overflow-y:auto;">
+      <div style="padding:0 4px;">
+        <NavItem v-for="item in mainNav" :key="item.to" :item="item" :current="route.path" />
+      </div>
+
+      <div class="nx-nav-group"><span>Build</span></div>
+      <div style="padding:0 4px;">
+        <NavItem v-for="item in buildNav" :key="item.to" :item="item" :current="route.path" />
+      </div>
+
+      <div class="nx-nav-group"><span>Operations</span></div>
+      <div style="padding:0 4px;">
+        <NavItem v-for="item in opsNav" :key="item.to" :item="item" :current="route.path" />
       </div>
     </nav>
 
-    <div class="border-t border-slate-200 p-3 dark:border-slate-800">
-      <div class="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
-        <div class="flex items-center justify-between text-xs">
-          <span class="font-medium text-slate-600 dark:text-slate-300">System health</span>
-          <span class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-            Online
-          </span>
-        </div>
-        <div class="mt-2 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800">
-          <div class="h-full w-[78%] rounded-full bg-cyan-500"></div>
-        </div>
+    <!-- Footer -->
+    <div style="padding:12px;border-top:1px solid var(--line);">
+      <div class="nx-health" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:9px;background:var(--bg-sunk);border:1px solid var(--line);margin-bottom:8px;">
+        <span style="display:inline-flex;align-items:center;gap:8px;font-size:12px;">
+          <span class="nx-live-dot" />
+          <span>VPS · OpenClaw online</span>
+        </span>
+        <span class="mono" style="font-size:11px;color:var(--muted);">98%</span>
       </div>
-      <NuxtLink
-        v-for="item in bottomNav"
-        :key="item.to"
-        :to="item.to"
-        :class="[
-          'flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition',
-          route.path.startsWith(item.to)
-            ? 'bg-slate-100 text-slate-950 dark:bg-slate-900 dark:text-slate-100'
-            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
-        ]"
-      >
-        <component :is="item.icon" class="h-4 w-4" />
-        <span>{{ item.label }}</span>
-      </NuxtLink>
+      <div style="display:flex;align-items:center;gap:10px;padding:4px;">
+        <NxAvatar :name="userName" clay />
+        <div class="nx-ws-meta" style="flex:1;min-width:0;">
+          <div style="font-size:12.5px;font-weight:500;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ userName }}</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ userEmail }}</div>
+        </div>
+        <button class="nx-icon-btn" @click="navigateTo('/settings')" title="Settings">
+          <Settings :size="15" />
+        </button>
+      </div>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
 import {
-  LayoutDashboard,
-  CheckCircle,
-  FileCheck,
-  MessageSquare,
-  Settings,
-  Bot,
-  Brain,
-  Plug,
-  SlidersHorizontal,
-  Plus,
-  ServerCog
+  Home, MessageSquare, CheckSquare, Shield, Bot, Plug, Workflow,
+  Brain, Clock, Server, Settings, Search, ChevronDown
 } from 'lucide-vue-next'
 
-const { agents, isLoading, fetchAgents } = useAgent()
+const emit = defineEmits<{ cmdK: [] }>()
+
 const route = useRoute()
-const { pendingApprovals, fetchApprovals } = useApprovals()
+const { user } = useAuth()
+const workspaceStore = useWorkspaceStore()
+const { pendingApprovals } = useApprovals()
 const tasksStore = useTasksStore()
 
-onMounted(() => {
-  void fetchAgents()
-  void fetchApprovals()
-  void tasksStore.fetchTasks()
+const workspaceName = computed(() => workspaceStore.currentWorkspace?.name || 'My Workspace')
+const workspacePlan = computed(() => 'Growth plan')
+const workspaceInitials = computed(() => {
+  const name = workspaceName.value
+  return name.split(/\s+/).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
 })
+const userName = computed(() => {
+  if (!user.value) return 'User'
+  return `${user.value.firstName} ${user.value.lastName}`.trim()
+})
+const userEmail = computed(() => user.value?.email || '')
 
-const topNav = computed(() => [
-  { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-  { label: 'Agent Studio', to: '/settings/agents', icon: SlidersHorizontal },
-  { label: 'Tasks', to: '/tasks', icon: CheckCircle, badge: tasksStore.tasks.length || undefined },
-  { label: 'Approvals', to: '/approvals', icon: FileCheck, badge: pendingApprovals.value.length || undefined },
-  { label: 'Memory', to: '/settings/memory', icon: Brain },
-  { label: 'Runtime', to: '/settings/runtime', icon: ServerCog },
-  { label: 'Integrations', to: '/settings/integrations', icon: Plug },
-  { label: 'Chat', to: '/', icon: MessageSquare }
+const mainNav = computed(() => [
+  { to: '/', label: 'Home', icon: Home },
+  { to: '/chat', label: 'Chat', icon: MessageSquare },
+  { to: '/tasks', label: 'Tasks', icon: CheckSquare, badge: tasksStore.tasks.length || null },
+  { to: '/approvals', label: 'Approvals', icon: Shield, badge: pendingApprovals.value.length || null },
 ])
 
-const bottomNav = [
-  { label: 'Settings', to: '/settings', icon: Settings }
+const buildNav = [
+  { to: '/settings/agents', label: 'Agents', icon: Bot },
+  { to: '/settings/integrations', label: 'Plugins', icon: Plug },
+  { to: '/playbooks', label: 'Playbooks', icon: Workflow },
 ]
 
-function isActive (to: string): boolean {
-  if (to === '/') return route.path === '/'
-  return route.path.startsWith(to)
-}
+const opsNav = [
+  { to: '/settings/memory', label: 'Memory', icon: Brain },
+  { to: '/schedules', label: 'Schedules', icon: Clock },
+  { to: '/settings/runtime', label: 'Runtime', icon: Server },
+]
 </script>
