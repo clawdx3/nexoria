@@ -12,12 +12,12 @@
     <div class="flex-1 overflow-auto p-6">
       <CommonLoadingSpinner v-if="isLoading" />
       <div v-else-if="pendingApprovals.length === 0">
-        <EmptyState :icon="CheckCircle" title="All caught up"
+        <CommonEmptyState :icon="CheckCircle" title="All caught up"
           description="No pending approvals right now."
         />
       </div>
       <div v-else class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <ApprovalCard
+        <ApprovalsApprovalCard
           v-for="a in pendingApprovals"
           :key="a.id"
           :approval="a"

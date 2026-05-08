@@ -29,11 +29,11 @@
     <div class="flex-1 overflow-auto p-6">
       <CommonLoadingSpinner v-if="isLoading" />
       <div v-else-if="tasks.length === 0">
-        <EmptyState :icon="CheckCircle" title="No tasks yet" description="Create your first task to get started.">
+        <CommonEmptyState :icon="CheckCircle" title="No tasks yet" description="Create your first task to get started.">
           <template #action>
             <UButton size="sm" color="indigo" class="mt-4" @click="showCreate = true">Create task</UButton>
           </template>
-        </EmptyState>
+        </CommonEmptyState>
       </div>
       <div v-else class="space-y-4">
         <div v-for="(group, mission) in grouped" :key="mission">
@@ -41,7 +41,13 @@
             {{ mission }}
           </div>
           <div class="grid gap-3">
-            <TaskCard v-for="task in group" :key="task.id" :task="task" @refresh="fetch" />
+            <TasksTaskCard
+              v-for="task in group"
+              :key="task.id"
+              :task="task"
+              @update="updateTask"
+              @delete="deleteTask"
+            />
           </div>
         </div>
       </div>
@@ -70,7 +76,7 @@ definePageMeta({ middleware: 'auth' })
 import { Plus, CheckCircle } from 'lucide-vue-next'
 import type { Task } from '~/types'
 
-const { tasks, isLoading, fetchTasks, createTask, filter } = useTasks()
+const { tasks, isLoading, fetchTasks, createTask, updateTask: patchTask, deleteTask: removeTask, filter } = useTasks()
 const { fetchAgents } = useAgent()
 onMounted(() => { void fetchTasks(); void fetchAgents() })
 
@@ -108,5 +114,13 @@ async function submitCreate () {
   } finally {
     creating.value = false
   }
+}
+
+async function updateTask (id: string, patch: Partial<Task>) {
+  await patchTask(id, patch)
+}
+
+async function deleteTask (id: string) {
+  await removeTask(id)
 }
 </script>

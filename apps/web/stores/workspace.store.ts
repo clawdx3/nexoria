@@ -81,11 +81,29 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function ensureWorkspace (): Promise<string | null> {
     const cookieId = useCookie('workspace_id').value
-    if (currentWorkspaceId.value || cookieId) {
-      if (!currentWorkspaceId.value && cookieId) currentWorkspaceId.value = cookieId
+    if (!currentWorkspaceId.value && cookieId) {
+      currentWorkspaceId.value = cookieId
+    }
+
+    if (!workspaces.value.length) {
+      await fetchWorkspaces()
+    }
+
+    if (
+      currentWorkspaceId.value &&
+      workspaces.value.some(workspace => workspace.id === currentWorkspaceId.value)
+    ) {
       return currentWorkspaceId.value
     }
-    await fetchWorkspaces()
+
+    if (workspaces.value.length) {
+      setWorkspace(workspaces.value[0].id)
+      return currentWorkspaceId.value
+    }
+
+    const workspace = await createDefaultWorkspace()
+    workspaces.value = [workspace]
+    setWorkspace(workspace.id)
     return currentWorkspaceId.value
   }
 

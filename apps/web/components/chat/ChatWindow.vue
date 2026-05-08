@@ -9,7 +9,7 @@
           <p class="text-sm text-slate-500">{{ subtitle }}</p>
         </div>
       </div>
-      <AgentSelector
+      <ChatAgentSelector
         :agents="agents"
         :model-value="selectedAgentId"
         @update:model-value="onSwitchAgent"

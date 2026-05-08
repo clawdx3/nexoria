@@ -4,7 +4,7 @@
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <h3 class="truncate text-sm font-semibold">{{ task.title }}</h3>
-          <TaskStatusBadge :status="task.status" />
+          <TasksTaskStatusBadge :status="task.status" />
         </div>
         <p v-if="task.description" class="mt-1 line-clamp-2 text-xs text-slate-500">
           {{ task.description }}

@@ -39,7 +39,7 @@
               <p class="text-xs text-slate-500">Orchestrates agent work and creates follow-up tasks.</p>
             </div>
           </div>
-          <AgentSelector
+          <ChatAgentSelector
             :agents="agents"
             :model-value="selectedAgentId"
             @update:model-value="selectedAgentId = $event"

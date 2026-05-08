@@ -37,6 +37,7 @@ export const useChatStore = defineStore('chat', () => {
         timestamp: new Date().toISOString()
       }
       messages.value.push(assistantMsg)
+      await useTasksStore().fetchTasks(workspaceId)
     } catch (e: any) {
       error.value = e?.message || 'Failed to get response'
       messages.value.push({

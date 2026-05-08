@@ -13,7 +13,7 @@
         </div>
       </div>
     </UCard>
-    <EmptyState v-if="memories.length === 0" icon="Brain" title="No memories yet" description="Memories will appear here after your AI agents learn from tasks." />
+    <CommonEmptyState v-if="memories.length === 0" icon="Brain" title="No memories yet" description="Memories will appear here after your AI agents learn from tasks." />
   </div>
 </template>
 <script setup lang="ts">
