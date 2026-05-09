@@ -15,6 +15,11 @@ export class CreateMemoryDto {
   @IsEnum(['fact', 'preference', 'avoidance', 'pattern', 'task_result', 'draft', 'conversation'])
   type: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  sessionId?: string;
+
   @ApiProperty({ example: 'User prefers formal tone in emails' })
   @IsString()
   content: string;
@@ -69,6 +74,9 @@ export class MemoryResponseDto {
 
   @ApiProperty()
   createdAt: Date;
+
+  @ApiPropertyOptional()
+  lastValidatedAt?: Date | null;
 }
 
 export class SemanticSearchDto {

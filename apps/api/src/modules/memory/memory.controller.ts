@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Request, UseGuards } from '@nestjs/
 import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { MemoryService } from './memory.service';
 import { CreateMemoryDto, MemoryResponseDto, SemanticSearchDto } from './dto/create-memory.dto';
+import { EmbeddingService } from '../agent-runtime/embedding/embedding.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-request.interface';
 
@@ -10,7 +11,10 @@ import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-requ
 @UseGuards(JwtAuthGuard)
 @Controller('workspaces/:workspaceId/memory')
 export class MemoryController {
-  constructor(private readonly service: MemoryService) {}
+  constructor(
+    private readonly service: MemoryService,
+    private readonly embeddingService: EmbeddingService,
+  ) {}
 
   @Get()
   @ApiResponse({ status: 200, type: [MemoryResponseDto] })
@@ -32,8 +36,16 @@ export class MemoryController {
 
   @Post()
   @ApiResponse({ status: 201, type: MemoryResponseDto })
-  create(@Param('workspaceId') wsId: string, @Body() dto: CreateMemoryDto): Promise<MemoryResponseDto> {
-    return this.service.create(wsId, dto);
+  async create(@Param('workspaceId') wsId: string, @Body() dto: CreateMemoryDto): Promise<MemoryResponseDto> {
+    let embedding: number[] | undefined;
+    if (dto.tier === 'long_term' && this.embeddingService.isReady()) {
+      try {
+        embedding = await this.embeddingService.embed(dto.content);
+      } catch {
+        // silently fall back
+      }
+    }
+    return this.service.create(wsId, dto, { embedding });
   }
 
   @Post(':id/review')
@@ -50,9 +62,7 @@ export class MemoryController {
   @Post('search')
   @ApiResponse({ status: 200, type: [MemoryResponseDto] })
   async semanticSearch(@Param('workspaceId') wsId: string, @Body() dto: SemanticSearchDto): Promise<MemoryResponseDto[]> {
-    // In production, convert query to embedding via embedding model
-    // For now, return empty or implement a fallback
-    const mockEmbedding = Array(1536).fill(0).map(() => Math.random());
-    return this.service.semanticSearch(wsId, dto, mockEmbedding);
+    const embedding = await this.embeddingService.embed(dto.query);
+    return this.service.semanticSearch(wsId, embedding, dto.limit ?? 10);
   }
 }

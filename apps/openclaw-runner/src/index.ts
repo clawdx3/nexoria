@@ -68,6 +68,8 @@ const config = {
   configDir: process.env.OPENCLAW_CONFIG_DIR || '/openclaw-config',
   pollMs: Number(process.env.RUNNER_POLL_MS || 2500),
   heartbeatMs: Number(process.env.RUNNER_HEARTBEAT_MS || 15000),
+  sseReconnectMs: Number(process.env.RUNNER_SSE_RECONNECT_MS || 3000),
+  sseMaxBackoffMs: Number(process.env.RUNNER_SSE_MAX_BACKOFF_MS || 30000),
 };
 
 const riskyAgentPatterns = [
@@ -99,8 +101,7 @@ async function main(): Promise<void> {
   await syncBootstrapManifest();
   await heartbeat();
   setInterval(() => void heartbeat(), config.heartbeatMs);
-  setInterval(() => void poll(), config.pollMs);
-  setInterval(() => void pollChatCommands(), Math.max(500, Math.floor(config.pollMs / 2)));
+  connectRunnerEvents();
   console.log(`[runner] ready instanceKey=${config.instanceKey} backend=${config.backendUrl} openclaw=${config.openclawUrl}`);
 }
 
@@ -290,6 +291,72 @@ async function pollChatCommands(): Promise<void> {
   } finally {
     chatActive = false;
   }
+}
+
+/* SSE-based runner event stream (replaces naive polling when available) */
+let sseBackoffMs = config.sseReconnectMs;
+let sseFallbackTimer: NodeJS.Timeout | null = null;
+let sseAbort: AbortController | null = null;
+
+function connectRunnerEvents(): void {
+  const url = `${config.backendUrl}/runner/runtime/instances/${encodeURIComponent(config.instanceKey)}/events`;
+  sseAbort = new AbortController();
+  const headers: Record<string, string> = {
+    accept: 'text/event-stream',
+    'x-runner-token': config.runnerToken,
+  };
+
+  fetch(url, { headers, signal: sseAbort.signal })
+    .then(async (res) => {
+      if (!res.ok || !res.body) {
+        throw new Error(`SSE endpoint returned ${res.status}`);
+      }
+      console.log('[runner] sse connected');
+      sseBackoffMs = config.sseReconnectMs;
+      if (sseFallbackTimer) {
+        clearInterval(sseFallbackTimer);
+        sseFallbackTimer = null;
+      }
+      const reader = res.body.getReader();
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += new TextDecoder().decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(trimmed.slice(6));
+              if (event.type === 'job') {
+                void runJob(event.data as RuntimeJob);
+              } else if (event.type === 'chat_command') {
+                void runChatCommand(event.data as RuntimeChatCommand);
+              }
+            } catch (err: any) {
+              console.warn('[runner] sse message parse failed', err.message);
+            }
+          }
+        }
+      }
+      throw new Error('SSE stream closed');
+    })
+    .catch((err: any) => {
+      if (err.name === 'AbortError') return;
+      const delay = Math.min(sseBackoffMs, config.sseMaxBackoffMs);
+      sseBackoffMs = Math.min(sseBackoffMs * 2, config.sseMaxBackoffMs);
+      console.warn(`[runner] sse disconnected (${err.message}); reconnecting in ${delay}ms`);
+      setTimeout(() => connectRunnerEvents(), delay);
+
+      if (!sseFallbackTimer) {
+        sseFallbackTimer = setInterval(() => {
+          void poll();
+          void pollChatCommands();
+        }, config.pollMs);
+      }
+    });
 }
 
 async function runChatCommand(command: RuntimeChatCommand): Promise<void> {

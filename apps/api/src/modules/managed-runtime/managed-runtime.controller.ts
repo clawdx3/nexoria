@@ -17,6 +17,7 @@ import {
   SendRuntimeChatMessageDto,
   UploadArtifactDto,
 } from './dto/managed-runtime.dto';
+import { RunnerEventsService } from './runner-events/runner-events.service';
 
 @ApiTags('Managed Runtime')
 @ApiBearerAuth()
@@ -117,7 +118,10 @@ export class ArtifactsController {
 @UseGuards(RunnerTokenGuard)
 @Controller('runner/runtime')
 export class RuntimeRunnerController {
-  constructor(private readonly service: ManagedRuntimeService) {}
+  constructor(
+    private readonly service: ManagedRuntimeService,
+    private readonly runnerEvents: RunnerEventsService,
+  ) {}
 
   @Post('instances')
   @ApiResponse({ status: 201 })
@@ -135,6 +139,26 @@ export class RuntimeRunnerController {
   @ApiResponse({ status: 200 })
   heartbeat(@Param('instanceKey') instanceKey: string, @Body() dto: HeartbeatRuntimeInstanceDto): Promise<any> {
     return this.service.heartbeat(instanceKey, dto);
+  }
+
+  @Get('instances/:instanceKey/events')
+  @ApiResponse({ status: 200 })
+  async runnerEventsStream(@Param('instanceKey') instanceKey: string, @Res() res: Response): Promise<void> {
+    const stream = this.runnerEvents.streamFor(instanceKey);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    res.write(': connected\n\n');
+    const subscription = stream.subscribe({
+      next: (event) => res.write(`data: ${JSON.stringify(event)}\n\n`),
+      error: () => res.end(),
+      complete: () => res.end(),
+    });
+    res.on('close', () => {
+      subscription.unsubscribe();
+      this.runnerEvents.cleanup();
+    });
   }
 
   @Get('instances/:instanceKey/jobs/next')

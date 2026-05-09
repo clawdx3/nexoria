@@ -5,11 +5,13 @@ import { SocialPostDraftsModule } from '../social-post-drafts/social-post-drafts
 import { ManagedRuntimeModule } from '../managed-runtime/managed-runtime.module';
 import { AgentProfilesModule } from '../agent-profiles/agent-profiles.module';
 import { AttachmentsModule } from '../attachments/attachments.module';
+import { MemoryModule } from '../memory/memory.module';
+import { EmbeddingModule } from '../embedding/embedding.module';
 import { McpController } from './mcp.controller';
 import { McpService } from './mcp.service';
 
 @Module({
-  imports: [ConfigModule, TasksModule, SocialPostDraftsModule, ManagedRuntimeModule, AgentProfilesModule, AttachmentsModule],
+  imports: [ConfigModule, TasksModule, SocialPostDraftsModule, ManagedRuntimeModule, AgentProfilesModule, AttachmentsModule, MemoryModule, EmbeddingModule],
   controllers: [McpController],
   providers: [McpService],
 })

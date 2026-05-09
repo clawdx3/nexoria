@@ -11,14 +11,21 @@ import { RuntimeChatCommand } from '../../database/entities/runtime-chat-command
 import { Task } from '../../database/entities/task.entity';
 import { TaskComment } from '../../database/entities/task-comment.entity';
 import { AttachmentsModule } from '../attachments/attachments.module';
+import { MemoryModule } from '../memory/memory.module';
 import { ArtifactsController, ManagedRuntimeController, RuntimeRunnerController } from './managed-runtime.controller';
 import { ManagedRuntimeService } from './managed-runtime.service';
+import { RunnerEventsService } from './runner-events/runner-events.service';
 import { RunnerTokenGuard } from './runner-token.guard';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RuntimeInstance, RuntimeJob, RuntimeEvent, Artifact, RuntimeChatSession, RuntimeChatMessage, RuntimeChatCommand, Task, TaskComment]), AgentProfilesModule, AttachmentsModule],
-  providers: [ManagedRuntimeService, RunnerTokenGuard],
+  imports: [
+    TypeOrmModule.forFeature([RuntimeInstance, RuntimeJob, RuntimeEvent, Artifact, RuntimeChatSession, RuntimeChatMessage, RuntimeChatCommand, Task, TaskComment]),
+    AgentProfilesModule,
+    AttachmentsModule,
+    MemoryModule,
+  ],
+  providers: [ManagedRuntimeService, RunnerEventsService, RunnerTokenGuard],
   controllers: [ManagedRuntimeController, ArtifactsController, RuntimeRunnerController],
-  exports: [ManagedRuntimeService],
+  exports: [ManagedRuntimeService, RunnerEventsService],
 })
 export class ManagedRuntimeModule {}

@@ -11,6 +11,9 @@ import { AgentProfilesService } from '../agent-profiles/agent-profiles.service';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { TaskPriority, TaskStatus } from '../../database/entities/task.entity';
 import { SocialPostDraftStatus, SocialPostPlatform } from '../../database/entities/social-post-draft.entity';
+import { MemoryService } from '../memory/memory.service';
+import { EmbeddingService } from '../agent-runtime/embedding/embedding.service';
+import { MemoryTier, MemoryType } from '../../database/entities/memory-entry.entity';
 
 const SERVER_INFO = { name: 'nexoria-mcp', version: '0.1.0' };
 const MESSAGES_ENDPOINT = '/api/v1/mcp/messages';
@@ -35,11 +38,14 @@ export class McpService {
     private readonly agentProfiles: AgentProfilesService,
     private readonly attachments: AttachmentsService,
     private readonly config: ConfigService,
+    private readonly memoryService: MemoryService,
+    private readonly embeddingService: EmbeddingService,
   ) {
     this.registerTaskTools();
     this.registerSocialPostDraftTools();
     this.registerRuntimeDelegationTools();
     this.registerAttachmentTools();
+    this.registerMemoryTools();
   }
 
   authenticate(authHeader: string | undefined): void {
@@ -536,6 +542,81 @@ export class McpService {
           downloadUrl: attachment.signedDownloadUrl,
           downloadUrlExpiresAt: attachment.downloadUrlExpiresAt,
         };
+      },
+    });
+  }
+
+  private registerMemoryTools(): void {
+    this.tools.set('create_memory', {
+      name: 'create_memory',
+      description: [
+        'Store a durable memory fact, preference, or pattern in Nexoria for future recall.',
+        'Use this whenever the user explicitly asks to remember something, or when you observe a fact worth persisting across sessions.',
+        'For facts you expect to need long-term, use tier "long_term" (auto-embeds for semantic search).',
+        'For session-only notes, use tier "session". For daily working memory, use tier "daily".',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string', description: 'UUID of the active Nexoria workspace.' },
+          content: { type: 'string', description: 'The memory text to store. Be concise and factual.' },
+          tier: { type: 'string', enum: ['profile', 'session', 'daily', 'long_term'], description: 'Memory tier. profile=user-wide facts, session=current chat only, daily=recent working memory, long_term=durable semantic memory.' },
+          type: { type: 'string', enum: ['fact', 'preference', 'avoidance', 'pattern', 'task_result', 'draft', 'conversation'], description: ' memory type.' },
+          userId: { type: 'string', description: 'UUID of the user this memory belongs to.' },
+          confidence: { type: 'number', description: 'Optional confidence 0–1. Default 0.9.' },
+          sessionId: { type: 'string', description: 'Optional session id when tier is session.' },
+        },
+        required: ['workspaceId', 'content', 'tier', 'type', 'userId'],
+      },
+      execute: async (args) => {
+        const dto = {
+          workspaceId: args.workspaceId,
+          userId: args.userId,
+          content: args.content,
+          tier: args.tier,
+          type: args.type,
+          sessionId: args.sessionId,
+          confidence: typeof args.confidence === 'number' ? args.confidence : 0.9,
+          metadata: { source: 'mcp:create_memory' },
+        };
+        let embedding: number[] | undefined;
+        if (dto.tier === 'long_term' && this.embeddingService.isReady()) {
+          try {
+            embedding = await this.embeddingService.embed(dto.content);
+          } catch {
+            // silently skip embedding
+          }
+        }
+        return this.memoryService.create(args.workspaceId, dto as any, { embedding });
+      },
+    });
+
+    this.tools.set('recall_memory', {
+      name: 'recall_memory',
+      description: [
+        'Search Nexoria durable memory by semantic similarity or text match.',
+        'Use this when the user asks about something previously discussed or stored, or when you need context about past decisions, preferences, or facts.',
+        'For long-term tier semantic search is used automatically; for other tiers a text search is used.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string', description: 'UUID of the active Nexoria workspace.' },
+          query: { type: 'string', description: 'Search query describing what you want to recall.' },
+          tier: { type: 'string', enum: ['profile', 'session', 'daily', 'long_term'], description: 'Optional tier filter. Omit to search long_term only.' },
+          userId: { type: 'string', description: 'UUID of the user to search memories for.' },
+          limit: { type: 'number', description: 'Max results. Default 10.' },
+        },
+        required: ['workspaceId', 'query', 'userId'],
+      },
+      execute: async (args) => {
+        const tier = args.tier ?? 'long_term';
+        const limit = args.limit ?? 10;
+        if (tier === 'long_term') {
+          const embedding = await this.embeddingService.embed(args.query);
+          return this.memoryService.semanticSearch(args.workspaceId, embedding, limit);
+        }
+        return this.memoryService.searchByText(args.workspaceId, args.query, limit);
       },
     });
   }

@@ -158,6 +158,8 @@ export interface MemoryEntry {
   positiveUses: number
   negativeUses: number
   createdAt: string
+  lastValidatedAt?: string | null
+  metadata?: Record<string, any> | null
 }
 
 export interface Integration {

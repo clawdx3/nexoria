@@ -2,19 +2,23 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MemoryEntry, MemoryTier, MemoryType } from '../../database/entities/memory-entry.entity';
-import { CreateMemoryDto, MemoryResponseDto, SemanticSearchDto } from './dto/create-memory.dto';
+import { CreateMemoryDto, MemoryResponseDto } from './dto/create-memory.dto';
 
 @Injectable()
 export class MemoryService {
-  constructor(@InjectRepository(MemoryEntry) private readonly repo: Repository<MemoryEntry>) {}
+  constructor(
+    @InjectRepository(MemoryEntry) private readonly repo: Repository<MemoryEntry>,
+  ) {}
 
-  async create(workspaceId: string, dto: CreateMemoryDto): Promise<MemoryResponseDto> {
+  async create(workspaceId: string, dto: CreateMemoryDto, opts?: { embedding?: number[] }): Promise<MemoryResponseDto> {
     const entry = this.repo.create({
       workspaceId,
       userId: dto.userId,
+      sessionId: dto.sessionId ?? null,
       tier: dto.tier as MemoryTier,
       type: dto.type as MemoryType,
       content: dto.content,
+      embedding: opts?.embedding ?? null,
       metadata: dto.metadata ?? {},
       confidence: dto.confidence ?? 1.0,
       expiresAt: dto.expiresAt ?? null,
@@ -41,9 +45,19 @@ export class MemoryService {
     return this.findByUser(userId, workspaceId);
   }
 
-  async semanticSearch(workspaceId: string, dto: SemanticSearchDto, embedding: number[]): Promise<MemoryResponseDto[]> {
-    // pgvector cosine similarity search using raw SQL
-    const limit = dto.limit ?? 10;
+  async searchByText(workspaceId: string, query: string, limit = 10): Promise<MemoryResponseDto[]> {
+    const items = await this.repo
+      .createQueryBuilder('m')
+      .where('m.workspaceId = :workspaceId', { workspaceId })
+      .andWhere('m.content ILIKE :query', { query: `%${query}%` })
+      .orderBy('m.confidence', 'DESC')
+      .addOrderBy('m.createdAt', 'DESC')
+      .limit(limit)
+      .getMany();
+    return items.map((i) => this.toDto(i));
+  }
+
+  async semanticSearch(workspaceId: string, embedding: number[], limit = 10): Promise<MemoryResponseDto[]> {
     const raw = (await this.repo.query(
       `SELECT id, "userId", tier, type, content, metadata, confidence,
               "positiveUses", "negativeUses", "createdAt"
@@ -81,6 +95,17 @@ export class MemoryService {
   async recordUse(id: string, positive: boolean): Promise<void> {
     const column = positive ? 'positiveUses' : 'negativeUses';
     await this.repo.increment({ id }, column, 1);
+    await this.repo.update({ id }, { lastValidatedAt: new Date() });
+  }
+
+  async touchValidatedAt(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.repo
+      .createQueryBuilder()
+      .update(MemoryEntry)
+      .set({ lastValidatedAt: new Date() })
+      .whereInIds(ids)
+      .execute();
   }
 
   private toDto(e: MemoryEntry): MemoryResponseDto {
@@ -96,6 +121,7 @@ export class MemoryService {
       positiveUses: e.positiveUses,
       negativeUses: e.negativeUses,
       createdAt: e.createdAt,
+      lastValidatedAt: e.lastValidatedAt ?? null,
     };
   }
 }

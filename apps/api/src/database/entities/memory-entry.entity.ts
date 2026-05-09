@@ -27,7 +27,12 @@ export class MemoryEntry {
   @Column()
   userId: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  @Index()
+  sessionId: string | null;
+
   @Column({ type: 'enum', enum: ['profile', 'session', 'daily', 'long_term'] })
+  @Index()
   tier: MemoryTier;
 
   @Column({ type: 'enum', enum: ['fact', 'preference', 'avoidance', 'pattern', 'task_result', 'draft', 'conversation'] })

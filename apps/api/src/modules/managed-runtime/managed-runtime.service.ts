@@ -27,6 +27,7 @@ import {
   UploadArtifactDto,
 } from './dto/managed-runtime.dto';
 import { MemoryContextBuilder } from '../agent-runtime/memory-context/memory-context.builder';
+import { ReflectionDebouncerService } from '../agent-runtime/reflection/reflection-debouncer.service';
 import { AgentContext } from '../../shared/interfaces/agent.interfaces';
 import { BOOTSTRAP_VERSION, BOOTSTRAP_FILES, BOOTSTRAP_MANAGED_PATHS } from './bootstrap-templates';
 
@@ -62,6 +63,7 @@ export class ManagedRuntimeService {
     private readonly attachments: AttachmentsService,
     private readonly memoryBuilder: MemoryContextBuilder,
     private readonly runnerEvents: RunnerEventsService,
+    private readonly reflectionDebouncer: ReflectionDebouncerService,
   ) {}
 
   async createJob(workspaceId: string, requestedByUserId: string | null, dto: CreateRuntimeJobDto): Promise<any> {
@@ -455,6 +457,9 @@ export class ManagedRuntimeService {
         ...(dto.metadata ?? {}),
       });
       await this.chatSessions.update(session.id, { lastMessageAt: new Date(), status: 'active' });
+      if (session.userId) {
+        this.reflectionDebouncer.schedule(session.workspaceId, session.id, session.userId);
+      }
     } else if (dto.type === 'assistant_delta') {
       this.emitChat(session.id, { type: 'assistant_delta', content: dto.content ?? '', runId: dto.runId, metadata: dto.metadata ?? {} });
       return { ok: true };
