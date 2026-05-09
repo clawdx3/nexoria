@@ -9,7 +9,7 @@ Nexoria is a NestJS monorepo backend for an AI-powered agent platform. It is des
 - **Workspace-scoped multi-tenancy**: Almost every entity belongs to a workspace.
 - **Agent runtime**: A reusable executor loop that loads memory, calls LLMs, and runs tools.
 - **Tool registry**: Dynamic, customer-scoped tool discovery via `enabledTools` on agent profiles.
-- **4-tier memory**: Profile / Session / Daily / Long-term (semantic search via pgvector).
+- **4-tier memory**: Profile / Session / Daily / Long-term (semantic search via pgvector). Auto-extracted from chat transcripts via a debounced reflection pass; lifecycle service decays, promotes, and expires entries on a daily cron.
 
 ## Repository Layout
 
@@ -64,7 +64,9 @@ Nexoria is a NestJS monorepo backend for an AI-powered agent platform. It is des
 | `apps/api/src/modules/agent-runtime/tool-registry/tool-registry.service.ts` | Tool registration + discovery |
 | `apps/api/src/modules/agent-runtime/llm-provider/llm-provider.factory.ts` | Per-profile model resolution |
 | `apps/api/src/modules/agent-runtime/memory-context/memory-context.builder.ts` | 4-tier memory assembly |
-| `apps/api/src/modules/agent-runtime/reflection/reflection.service.ts` | Post-run memory extraction |
+| `apps/api/src/modules/agent-runtime/reflection/reflection.service.ts` | Post-run memory extraction (also runs `extractFromTranscript` for chat-driven extraction) |
+| `apps/api/src/modules/agent-runtime/reflection/reflection-debouncer.service.ts` | Debounces per-session extraction; sweeps idle sessions every 5 min |
+| `apps/api/src/modules/memory/memory-lifecycle.service.ts` | Daily cron: decay, promotion, hard-delete |
 
 ## Key Conventions
 
@@ -116,7 +118,37 @@ Nexoria is a NestJS monorepo backend for an AI-powered agent platform. It is des
 #### Memory Context Builder
 - Loads from `memory_entries` table filtered by `workspaceId`, `userId`, and tier.
 - Long-term tier uses `embedding` column with pgvector cosine similarity (`<=>` operator).
+- After every recall, fires-and-forgets a `lastValidatedAt` touch on returned IDs so semantically-recalled memories don't decay.
 - Format method produces a text block injected into the system prompt.
+
+### Memory Lifecycle and Auto-Extraction
+
+Nexoria's DB memory is canonical. OpenClaw's per-session `MEMORY.md` / `memory/*.md` stays neutralized by the bootstrap (durable memory must live in Nexoria). Two background services keep the canonical store healthy without requiring agents to remember to call `create_memory`:
+
+#### Auto-extraction (`ReflectionService.extractFromTranscript`)
+- Triggered by `ReflectionDebouncerService.schedule(workspaceId, sessionId, userId)`, which `ManagedRuntimeService` calls after every saved `assistant_final` message.
+- Debouncer waits `REFLECTION_FLUSH_DELAY_MS` (default 30s) and re-arms on new turns. Multi-turn sessions get one extraction call instead of N.
+- Extraction reads only messages newer than `RuntimeChatSession.metadata.lastReflectedMessageId`, runs a single cheap LLM call (configurable via `MEMORY_EXTRACTION_PROVIDER` / `MEMORY_EXTRACTION_MODEL`, default `openai` / `gpt-4o-mini`), parses structured JSON, and writes rows tagged `metadata.source='reflection'` with `metadata.sourceMessageRange=[firstId,lastId]`.
+- Long-term entries are auto-embedded; embedding failures fall through silently.
+- A 5-minute sweep (`sweepStaleSessions`) catches sessions that idled out without a debouncer flush (closed tab, etc.).
+
+#### Lifecycle (`MemoryLifecycleService`, daily cron via `@nestjs/schedule`)
+- **Decay**: entries with no validation in `MEMORY_DECAY_AFTER_DAYS` days (default 14) get `confidence *= MEMORY_DECAY_FACTOR` (default 0.95), floor `MEMORY_DECAY_FLOOR` (default 0.1).
+- **Promotion**:
+  - `session` → `daily` after `>= MEMORY_SESSION_PROMOTE_USES` keeps (default 2) and confidence > `MEMORY_SESSION_PROMOTE_CONFIDENCE` (default 0.6).
+  - `daily` → `long_term` after `MEMORY_DAILY_PROMOTE_AGE_DAYS` (default 7) at confidence > `MEMORY_DAILY_PROMOTE_CONFIDENCE` (default 0.7), with embedding backfilled at promotion time.
+- **Hard delete**: `expiresAt` past, OR `>= MEMORY_HARD_DELETE_NEGATIVE_USES` rejects (default 3) with no positive uses, OR confidence < `MEMORY_HARD_DELETE_CONFIDENCE` (default 0.05).
+- Each phase is independently invokable for tests/manual runs.
+
+#### Memory provenance
+Memories are tagged with `metadata.source` so the UI can show how each one entered the store:
+- `reflection` — auto-extracted from chat transcript.
+- `reflection-tool` — written by the post-run pattern extractor in `ReflectionService.reflect`.
+- `mcp:create_memory` — explicit agent call via the MCP tool.
+- `manual` — UI-driven (default).
+
+#### Module wiring (avoid the cycle)
+`ReflectionService` and `ReflectionDebouncerService` live in **`MemoryModule`**, not `AgentRuntimeModule`. Importing them through `AgentRuntimeModule` re-creates a `TasksModule -> ManagedRuntimeModule -> AgentRuntimeModule -> TasksModule` cycle. `AgentExecutorService` still injects `ReflectionService` because `AgentRuntimeModule` already imports `MemoryModule`.
 
 ## Environment Variables
 
@@ -132,6 +164,14 @@ Nexoria is a NestJS monorepo backend for an AI-powered agent platform. It is des
 | `JWT_EXPIRES_IN` | No | Token expiry (default 7d) |
 | `OPENAI_API_KEY` | No | Required if using OpenAI models |
 | `OPENROUTER_API_KEY` | No | Required if using Anthropic/OpenRouter |
+| `MEMORY_EXTRACTION_PROVIDER` | No | `openai` (default), `openrouter`, or `ollama` for the auto-extraction LLM |
+| `MEMORY_EXTRACTION_MODEL` | No | Model id for auto-extraction (default `gpt-4o-mini`) |
+| `REFLECTION_FLUSH_DELAY_MS` | No | Debounce window before extraction fires (default 30000) |
+| `REFLECTION_SWEEP_INTERVAL_MS` | No | Idle-session sweep interval (default 300000) |
+| `MEMORY_DECAY_AFTER_DAYS` / `MEMORY_DECAY_FACTOR` / `MEMORY_DECAY_FLOOR` | No | Memory decay tuning |
+| `MEMORY_SESSION_PROMOTE_USES` / `MEMORY_SESSION_PROMOTE_CONFIDENCE` | No | session→daily promotion thresholds |
+| `MEMORY_DAILY_PROMOTE_AGE_DAYS` / `MEMORY_DAILY_PROMOTE_CONFIDENCE` | No | daily→long_term promotion thresholds |
+| `MEMORY_HARD_DELETE_NEGATIVE_USES` / `MEMORY_HARD_DELETE_CONFIDENCE` | No | Hard-delete thresholds |
 
 ## Testing Conventions
 
