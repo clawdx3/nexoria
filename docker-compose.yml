@@ -305,6 +305,9 @@ services:
                     "model": f"ollama/{model}",
                 },
             },
+            "tools": {
+                "deny": ["memory_search"],
+            },
         }))
         PY
         openclaw config patch --file /tmp/nexoria-openclaw-config.json
