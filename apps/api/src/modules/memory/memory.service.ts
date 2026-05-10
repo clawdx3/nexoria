@@ -58,25 +58,28 @@ export class MemoryService {
   }
 
   async semanticSearch(workspaceId: string, embedding: number[], limit = 10): Promise<MemoryResponseDto[]> {
-    const raw = (await this.repo.query(
-      `SELECT id, "userId", tier, type, content, metadata, confidence,
-              "positiveUses", "negativeUses", "createdAt"
-       FROM memory_entries
-       WHERE "workspaceId" = $1 AND embedding IS NOT NULL
-       ORDER BY embedding <=> $2
-       LIMIT $3`,
-      [workspaceId, JSON.stringify(embedding), limit],
-    )) as Array<{
-      id: string;
-      userId: string;
-      tier: string;
-      type: string;
-      content: string;
-      confidence: number;
-      positiveUses: number;
-      negativeUses: number;
-      createdAt: Date;
-    }>;
+    const dim = embedding.length;
+    const vectorLiteral = `[${embedding.join(',')}]`;
+    let raw: any[] = [];
+    try {
+      raw = await this.repo.query(
+        `SELECT id, "userId", tier, type, content, metadata, confidence,
+                "positiveUses", "negativeUses", "createdAt", "lastValidatedAt"
+         FROM memory_entries
+         WHERE "workspaceId" = $1 AND embedding IS NOT NULL
+         ORDER BY embedding::vector(${dim}) <=> $2::vector(${dim})
+         LIMIT $3`,
+        [workspaceId, vectorLiteral, limit],
+      );
+    } catch (err) {
+      // pgvector unavailable or column shape mismatch — fall back to confidence ranking.
+      const items = await this.repo.find({
+        where: { workspaceId },
+        order: { confidence: 'DESC', createdAt: 'DESC' },
+        take: limit,
+      });
+      return items.map((i) => this.toDto(i));
+    }
     return raw.map((r) => ({
       id: r.id,
       workspaceId,
@@ -84,11 +87,12 @@ export class MemoryService {
       tier: r.tier,
       type: r.type,
       content: r.content,
-      metadata: {},
+      metadata: r.metadata ?? {},
       confidence: r.confidence,
       positiveUses: r.positiveUses,
       negativeUses: r.negativeUses,
       createdAt: r.createdAt,
+      lastValidatedAt: r.lastValidatedAt ?? null,
     }));
   }
 

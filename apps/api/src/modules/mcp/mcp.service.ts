@@ -613,8 +613,14 @@ export class McpService {
         const tier = args.tier ?? 'long_term';
         const limit = args.limit ?? 10;
         if (tier === 'long_term') {
-          const embedding = await this.embeddingService.embed(args.query);
-          return this.memoryService.semanticSearch(args.workspaceId, embedding, limit);
+          if (this.embeddingService.isReady()) {
+            try {
+              const embedding = await this.embeddingService.embed(args.query);
+              return await this.memoryService.semanticSearch(args.workspaceId, embedding, limit);
+            } catch {
+              // fall through to text search if embedding/pgvector path errors
+            }
+          }
         }
         return this.memoryService.searchByText(args.workspaceId, args.query, limit);
       },

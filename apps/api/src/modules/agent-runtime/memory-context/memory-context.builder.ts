@@ -76,12 +76,14 @@ export class MemoryContextBuilder {
 
     try {
       const embedding = await this.embeddingService.embed(query);
+      const dim = embedding.length;
+      const vectorLiteral = `[${embedding.join(',')}]`;
       const raw = (await this.repo.query(
         `SELECT id, content FROM memory_entries
          WHERE "workspaceId" = $1 AND tier = 'long_term' AND embedding IS NOT NULL
-         ORDER BY embedding <=> $2
+         ORDER BY embedding::vector(${dim}) <=> $2::vector(${dim})
          LIMIT $3`,
-        [ctx.workspaceId, JSON.stringify(embedding), 10],
+        [ctx.workspaceId, vectorLiteral, 10],
       )) as Array<{ id: string; content: string }>;
       this.touchValidated(raw.map((r) => r.id));
       return raw.map((r) => r.content);

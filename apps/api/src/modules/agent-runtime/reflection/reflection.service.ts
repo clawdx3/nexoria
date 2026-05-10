@@ -233,19 +233,35 @@ function stripJsonFence(text: string): string {
 }
 
 function pickExtractionModel(): unknown {
-  const provider = (process.env.MEMORY_EXTRACTION_PROVIDER || 'openai').toLowerCase();
-  const modelName = process.env.MEMORY_EXTRACTION_MODEL || 'gpt-4o-mini';
-  if (provider === 'openrouter') {
+  // Honour explicit override first.
+  const explicit = (process.env.MEMORY_EXTRACTION_PROVIDER || '').toLowerCase();
+  const explicitModel = process.env.MEMORY_EXTRACTION_MODEL;
+
+  // Fall back to whichever provider has credentials configured.
+  const provider = explicit || autoDetectProvider();
+
+  if (provider === 'openrouter' && process.env.OPENROUTER_API_KEY) {
     return createOpenAI({
       apiKey: process.env.OPENROUTER_API_KEY,
       baseURL: 'https://openrouter.ai/api/v1',
-    })(modelName);
+    })(explicitModel || 'anthropic/claude-3-haiku');
   }
-  if (provider === 'ollama') {
+  if (provider === 'ollama' && process.env.OLLAMA_API_KEY) {
     return createOpenAI({
       apiKey: process.env.OLLAMA_API_KEY,
       baseURL: process.env.OLLAMA_BASE_URL || 'https://ollama.com/v1',
-    })(modelName);
+    })(explicitModel || process.env.OLLAMA_MODEL || 'gpt-oss:120b');
   }
-  return openai(modelName);
+  if (process.env.OPENAI_API_KEY) {
+    return openai(explicitModel || 'gpt-4o-mini');
+  }
+  // Last resort: throw so the caller logs and skips this extraction pass.
+  throw new Error('No LLM credentials configured for memory extraction (OPENAI_API_KEY / OPENROUTER_API_KEY / OLLAMA_API_KEY).');
+}
+
+function autoDetectProvider(): string {
+  if (process.env.OPENAI_API_KEY) return 'openai';
+  if (process.env.OPENROUTER_API_KEY) return 'openrouter';
+  if (process.env.OLLAMA_API_KEY) return 'ollama';
+  return 'openai';
 }
