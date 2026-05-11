@@ -11,6 +11,8 @@ import { Workspace } from './workspace.entity';
 
 export type ModelProvider = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'custom';
 export type AgentRole = 'orchestrator' | 'specialist';
+export type RuntimeMode = 'openclaw' | 'native_saas' | 'native_pro';
+export type PlanTier = 'economy' | 'pro' | 'enterprise';
 
 @Entity('agent_profiles')
 export class AgentProfile {
@@ -50,6 +52,15 @@ export class AgentProfile {
 
   @Column({ type: 'int', default: 1 })
   defaultAutonomyLevel: number;
+
+  @Column({ type: 'enum', enum: ['openclaw', 'native_saas', 'native_pro'], default: 'openclaw' })
+  runtimeMode: 'openclaw' | 'native_saas' | 'native_pro';
+
+  @Column({ type: 'enum', enum: ['economy', 'pro', 'enterprise'], default: 'economy' })
+  planTier: 'economy' | 'pro' | 'enterprise';
+
+  @Column({ type: 'jsonb', default: {} })
+  remoteConfig: Record<string, any>;
 
   @Column({ default: false })
   isBuiltIn: boolean;

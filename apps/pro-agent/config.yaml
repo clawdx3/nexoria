@@ -1,0 +1,15 @@
+# Default Pro Agent configuration — override per deployment
+
+nexoriaApiUrl: http://api:3000/api/v1
+agentToken: dev-pro-agent-token
+workspaceId: 00000000-0000-0000-0000-000000000000
+agentProfileId: pro-agent-1
+
+llm:
+  provider: openai
+  apiKey: ""
+  model: gpt-4o
+
+memory:
+  localDir: /app/data/memory
+  syncToApi: true

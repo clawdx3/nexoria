@@ -215,6 +215,9 @@ export class AgentProfilesService implements OnModuleInit {
       defaultAutonomyLevel: p.defaultAutonomyLevel,
       isBuiltIn: p.isBuiltIn,
       isEnabled: p.isEnabled ?? true,
+      runtimeMode: p.runtimeMode ?? 'openclaw',
+      planTier: p.planTier ?? 'economy',
+      remoteConfig: p.remoteConfig ?? {},
       createdAt: p.createdAt,
     };
   }

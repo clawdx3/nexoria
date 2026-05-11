@@ -32,6 +32,7 @@ import { AgentContext } from '../../shared/interfaces/agent.interfaces';
 import { BOOTSTRAP_VERSION, BOOTSTRAP_FILES, BOOTSTRAP_MANAGED_PATHS } from './bootstrap-templates';
 
 import { RunnerEventsService } from './runner-events/runner-events.service';
+import { AgentLoopService } from '../agent-runtime/loop/agent-loop.service';
 
 const DEFAULT_LIMITS = {
   timeoutSeconds: 300,
@@ -64,6 +65,7 @@ export class ManagedRuntimeService {
     private readonly memoryBuilder: MemoryContextBuilder,
     private readonly runnerEvents: RunnerEventsService,
     private readonly reflectionDebouncer: ReflectionDebouncerService,
+    private readonly agentLoopService: AgentLoopService,
   ) {}
 
   async createJob(workspaceId: string, requestedByUserId: string | null, dto: CreateRuntimeJobDto): Promise<any> {
@@ -181,6 +183,67 @@ export class ManagedRuntimeService {
       ? await this.attachments.linkToChatMessage(workspaceId, attachmentIds, message.id, sessionId)
       : [];
     await this.chatSessions.update(sessionId, { lastMessageAt: new Date() });
+
+    const profile = await this.agentProfiles.findOne(session.agentProfileId);
+
+    if (profile?.runtimeMode === 'native_saas') {
+      // Run natively inside API — no OpenClaw runner involved
+      const agentCtx: AgentContext = {
+        workspaceId,
+        triggeredByUserId: userId,
+        userRole: 'user',
+        autonomyLevel: 1,
+        sessionId,
+        agentProfile: {
+          id: profile.id,
+          name: profile.name,
+          systemPrompt: profile.systemPrompt,
+          modelProvider: (profile.modelProvider || 'openai') as any,
+          modelName: profile.modelName || 'gpt-4o',
+          modelConfig: profile.modelConfig ?? {},
+          enabledTools: profile.enabledTools ?? [],
+          role: profile.role ?? 'orchestrator',
+        },
+      };
+
+      this.emitChat(sessionId, { type: 'user_message', message: this.chatMessageDto(message) });
+
+      // Run the agent loop asynchronously so we can stream tokens as they arrive
+      this.agentLoopService.run(agentCtx, dto.content, (chunk) => {
+        if (chunk.type === 'token') {
+          this.emitChat(sessionId, { type: 'assistant_delta', content: chunk.content ?? '', runId: sessionId });
+        } else if (chunk.type === 'tool_call_start') {
+          this.emitChat(sessionId, { type: 'status', status: 'running', content: `Using tool: ${chunk.toolName}`, runId: sessionId });
+        } else if (chunk.type === 'tool_result') {
+          this.emitChat(sessionId, { type: 'status', status: 'running', content: `Tool result: ${JSON.stringify(chunk.result).slice(0, 200)}`, runId: sessionId });
+        } else if (chunk.type === 'final') {
+          // final handled below after run resolves
+        } else if (chunk.type === 'error') {
+          this.emitChat(sessionId, { type: 'error', content: chunk.error, runId: sessionId });
+        }
+      }).then(async (result) => {
+        if (result.success && result.finalOutput) {
+          const assistant = await this.saveChatMessage(workspaceId, sessionId, 'assistant', result.finalOutput, 'completed', {
+            runId: sessionId,
+            source: 'native_saas',
+          });
+          this.emitChat(sessionId, { type: 'assistant_final', content: result.finalOutput, runId: sessionId, message: this.chatMessageDto(assistant) });
+          await this.chatSessions.update(sessionId, { status: 'active', lastMessageAt: new Date() });
+          if (session.userId) {
+            this.reflectionDebouncer.schedule(session.workspaceId, session.id, session.userId);
+          }
+        } else {
+          const errMsg = result.error || 'Agent loop failed';
+          const system = await this.saveChatMessage(workspaceId, sessionId, 'system', errMsg, 'error', { runId: sessionId, source: 'native_saas' });
+          this.emitChat(sessionId, { type: 'error', content: errMsg, runId: sessionId, message: this.chatMessageDto(system) });
+          await this.chatSessions.update(sessionId, { status: 'error' });
+        }
+      });
+
+      return { message: this.chatMessageDto(message), session: this.chatSessionDto(session) };
+    }
+
+    // OpenClaw path (default / native_pro not yet wired)
     const isFirstMessage = !session.openclawSessionKey;
     const allowedAgentIds = await this.allowedAgentIds(workspaceId);
     const context = isFirstMessage

@@ -17,12 +17,15 @@ import { ManagedRuntimeService } from './managed-runtime.service';
 import { RunnerEventsService } from './runner-events/runner-events.service';
 import { RunnerTokenGuard } from './runner-token.guard';
 
+import { AgentRuntimeModule } from '../agent-runtime/agent-runtime.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([RuntimeInstance, RuntimeJob, RuntimeEvent, Artifact, RuntimeChatSession, RuntimeChatMessage, RuntimeChatCommand, Task, TaskComment]),
     AgentProfilesModule,
     AttachmentsModule,
     MemoryModule,
+    AgentRuntimeModule,
   ],
   providers: [ManagedRuntimeService, RunnerEventsService, RunnerTokenGuard],
   controllers: [ManagedRuntimeController, ArtifactsController, RuntimeRunnerController],

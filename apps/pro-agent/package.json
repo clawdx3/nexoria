@@ -1,0 +1,22 @@
+{
+  "name": "@nexoria/pro-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nexoria/agent-core": "workspace:*",
+    "ws": "^8.16.0",
+    "yaml": "^2.4.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.4.5",
+    "tsx": "^4.7.0"
+  }
+}

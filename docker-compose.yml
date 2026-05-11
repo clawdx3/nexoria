@@ -196,8 +196,6 @@ services:
     volumes:
       - camofox_profiles:/home/node/.camofox/profiles
       - camofox_traces:/home/node/.camofox/traces
-    networks:
-      - nexoria
     # No ports exposed to host — only internal from api/worker containers
     # Add proxy envs here when you have them:
     # PROXY_STRATEGY: backconnect
@@ -425,9 +423,31 @@ services:
       - openclaw_config:/openclaw-config
       - openclaw_workspace:/openclaw-workspace
 
+  pro-agent:
+    build:
+      context: .
+      dockerfile: apps/pro-agent/Dockerfile
+    container_name: nexoria_pro_agent
+    environment:
+      NODE_ENV: development
+      NEXORIA_API_URL: http://api:3000/api/v1
+      NEXORIA_API_KEY: ${NEXORIA_PRO_AGENT_TOKEN:-dev-pro-agent-token-change-me}
+      NEXORIA_WORKSPACE_ID: ${NEXORIA_PRO_AGENT_WORKSPACE_ID:-00000000-0000-0000-0000-000000000000}
+      NEXORIA_AGENT_PROFILE_ID: ${NEXORIA_PRO_AGENT_PROFILE_ID:-00000000-0000-0000-0000-000000000000}
+      LLM_PROVIDER: ${PRO_AGENT_LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${PRO_AGENT_LLM_API_KEY}
+      LLM_MODEL: ${PRO_AGENT_LLM_MODEL:-gpt-4o}
+    volumes:
+      - pro_agent_data:/app/data
+    depends_on:
+      api:
+        condition: service_started
+    profiles:
+      - pro
+
 networks:
-  nexoria:
-    driver: bridge
+  default:
+    name: nexoria
 
 volumes:
   postgres_data:
@@ -438,3 +458,4 @@ volumes:
   openclaw_workspace:
   artifact_storage:
   minio_data:
+  pro_agent_data:
