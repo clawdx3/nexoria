@@ -1,14 +1,23 @@
 import { AgentLoop as AgentLoopCore, AgentToolRegistry, CompositeMemoryManager, AgentProfile, ToolContext } from '@nexoria/agent-core';
 import { Config } from './config';
+import { NexoriaMemoryProvider } from './memory';
 
 export class ProAgentLoop {
   private readonly loop = new AgentLoopCore();
-  private readonly registry = new AgentToolRegistry();
+  readonly registry = new AgentToolRegistry();
+  private readonly memoryManager: CompositeMemoryManager;
 
   constructor(
     private readonly config: Config,
     private readonly llm: any,
-  ) {}
+  ) {
+    const memoryProvider = new NexoriaMemoryProvider(
+      config.nexoriaApiUrl,
+      config.agentToken,
+      config.workspaceId,
+    );
+    this.memoryManager = new CompositeMemoryManager(memoryProvider);
+  }
 
   registerTool(tool: any): void {
     this.registry.register(tool);
@@ -28,13 +37,6 @@ export class ProAgentLoop {
       autonomyLevel: 3,
     };
 
-    const memoryProvider = {
-      loadTier: async (_ctx: any, _tier: string, _limit: number) => [],
-      loadLongTerm: async (_ctx: any, _query: string, _limit: number) => [],
-      store: async (_ctx: any, _content: string, _tier: string, _type: string) => {},
-    };
-    const memoryManager = new CompositeMemoryManager(memoryProvider);
-
     const result = await this.loop.run(
       {
         profile,
@@ -46,7 +48,7 @@ export class ProAgentLoop {
           return { text: res.text };
         },
         toolRegistry: this.registry,
-        memoryManager,
+        memoryManager: this.memoryManager,
         context: ctx,
         maxSteps: 10,
         maxTokens: (profile.modelConfig as any)?.maxTokens ?? 2048,

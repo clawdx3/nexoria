@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export type ModelProvider = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'custom';
 export type AgentRole = 'orchestrator' | 'specialist';
-export type RuntimeMode = 'openclaw' | 'native_saas' | 'native_pro';
+export type RuntimeMode = 'native_saas' | 'native_pro';
 export type PlanTier = 'economy' | 'pro' | 'enterprise';
 
 export interface AgentProfile {

@@ -11,7 +11,6 @@ import {
 import { Workspace } from './workspace.entity';
 import { RuntimeInstance } from './runtime-instance.entity';
 import { RuntimeChatMessage } from './runtime-chat-message.entity';
-import { RuntimeChatCommand } from './runtime-chat-command.entity';
 
 export type RuntimeChatSessionStatus = 'pending' | 'active' | 'closed' | 'error';
 
@@ -40,12 +39,6 @@ export class RuntimeChatSession {
   @JoinColumn({ name: 'instanceId' })
   instance: RuntimeInstance | null;
 
-  @Column({ type: 'text', nullable: true })
-  openclawSessionKey: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  openclawSessionId: string | null;
-
   @Column({ type: 'enum', enum: ['pending', 'active', 'closed', 'error'], default: 'pending' })
   status: RuntimeChatSessionStatus;
 
@@ -57,9 +50,6 @@ export class RuntimeChatSession {
 
   @OneToMany(() => RuntimeChatMessage, (message: RuntimeChatMessage) => message.session)
   messages: RuntimeChatMessage[];
-
-  @OneToMany(() => RuntimeChatCommand, (command: RuntimeChatCommand) => command.session)
-  commands: RuntimeChatCommand[];
 
   @CreateDateColumn()
   createdAt: Date;

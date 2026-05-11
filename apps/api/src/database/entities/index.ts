@@ -20,6 +20,7 @@ export * from './runtime-job.entity';
 export * from './runtime-event.entity';
 export * from './runtime-chat-session.entity';
 export * from './runtime-chat-message.entity';
-export * from './runtime-chat-command.entity';
 export * from './artifact.entity';
 export * from './attachment.entity';
+export * from './workspace-usage.entity';
+export * from './vps-instance.entity';

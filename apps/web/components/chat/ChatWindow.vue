@@ -9,13 +9,6 @@
           <p class="text-sm text-slate-500">{{ subtitle }}</p>
         </div>
       </div>
-      <div class="flex items-center gap-3">
-        <div class="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 dark:border-slate-800">
-          <ServerCog class="h-4 w-4 text-slate-500" />
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">OpenClaw</span>
-          <UToggle v-model="useOpenClaw" size="sm" />
-        </div>
-      </div>
     </div>
 
     <!-- Messages -->
@@ -37,11 +30,10 @@
         :attachments="msg.attachments"
       />
 
-      <!-- Delegation status -->
+      <!-- Loading status -->
       <div v-if="chatStore.isLoading" class="flex items-center gap-2 text-sm text-slate-500">
         <CommonLoadingSpinner size="sm" />
-        <span v-if="delegatedAgent">{{ delegatedAgent }} is working on this...</span>
-        <span v-else>{{ useOpenClaw ? 'OpenClaw is working on this...' : 'Thinking...' }}</span>
+        <span>Thinking...</span>
       </div>
     </div>
 
@@ -51,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { Bot, ServerCog } from 'lucide-vue-next'
+import { Bot } from 'lucide-vue-next'
 
 const props = defineProps<{
   agentRole?: string
@@ -62,11 +54,8 @@ const chatStore = useChatStore()
 const { agents, fetchAgents } = useAgent()
 const scrollRef = ref<HTMLDivElement | null>(null)
 
-const useOpenClaw = ref(false)
-
 onMounted(() => {
   void fetchAgents()
-  if (chatStore.openClawSessionId) useOpenClaw.value = true
 })
 
 const title = computed(() => {
@@ -85,13 +74,8 @@ const subtitle = computed(() => {
   return 'Ask anything. The orchestrator will delegate to the right agent.'
 })
 
-const delegatedAgent = computed(() => {
-  // In a real app you'd parse delegation from streaming metadata.
-  return ''
-})
-
 function onSend (content: string, files: File[]) {
-  void chatStore.sendMessage(content, props.agentProfileId || 'orchestrator', useOpenClaw.value ? 'openclaw' : 'nexoria', files)
+  void chatStore.sendMessage(content, props.agentProfileId || 'orchestrator', files)
 }
 
 watch(() => chatStore.messages.length, async () => {

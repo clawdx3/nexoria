@@ -1,52 +1,43 @@
 <template>
-  <div style="display:grid;grid-template-columns:260px 1fr 300px;height:calc(100vh - 56px);overflow:hidden;">
-
-    <!-- Agent list -->
-    <div style="border-right:1px solid var(--line);background:var(--bg-elev);display:flex;flex-direction:column;">
-      <div style="padding:16px 14px 10px;">
-        <div class="text-tiny">Talk to</div>
-      </div>
-      <div style="flex:1;overflow-y:auto;padding:0 8px 12px;">
-        <NuxtLink
-          v-for="a in allAgents"
-          :key="a.id"
-          :to="`/chat/${a.id}`"
-          style="display:flex;align-items:center;gap:10px;width:100%;padding:10px;border-radius:10px;margin-bottom:2px;text-align:left;text-decoration:none;transition:background .12s;"
-          :style="{
-            background: a.id === currentAgentId ? 'var(--bg-sunk)' : 'transparent',
-            opacity: a.isEnabled !== false ? 1 : 0.55,
-          }"
-        >
-          <NxAvatar :name="a.name" :color="agentColor(a)" />
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;" :style="{ fontWeight: a.id === currentAgentId ? 600 : 500 }">{{ a.name }}</div>
-            <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.role || 'Agent' }}</div>
-          </div>
-        </NuxtLink>
-      </div>
-      <div style="padding:12px;border-top:1px solid var(--line);">
-        <button class="nx-btn nx-btn-ghost nx-btn-sm" style="width:100%;" @click="navigateTo('/settings/agents')">
-          <Plus :size="13" /> New custom agent
-        </button>
-      </div>
-    </div>
+  <div style="display:grid;grid-template-columns:1fr 300px;height:calc(100vh - 56px);overflow:hidden;">
 
     <!-- Chat area -->
     <div style="display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;">
       <!-- Chat header -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--line);">
         <div style="display:flex;align-items:center;gap:12px;">
-          <NxAvatar :name="currentAgent?.name || 'Agent'" :color="agentColor(currentAgent)" size="lg" />
+          <NxAvatar :name="orchestrator?.name || 'Nexoria'" :color="agentColor(orchestrator)" size="lg" />
           <div>
-            <div class="nx-h-heading" style="margin-bottom:2px;">{{ currentAgent?.name || 'Team Lead' }}</div>
-            <div style="font-size:12px;color:var(--muted);">{{ currentAgent?.description || 'Routes work to specialist agents' }}</div>
+            <div class="nx-h-heading" style="margin-bottom:2px;">{{ orchestrator?.name || 'Nexoria' }}</div>
+            <div style="font-size:12px;color:var(--muted);">{{ orchestrator?.description || 'Your AI assistant' }}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          <div style="display:flex;align-items:center;gap:8px;padding:4px 10px 4px 8px;border:1px solid var(--line);border-radius:9px;background:var(--bg-sunk);">
-            <Server :size="13" />
-            <span style="font-size:12px;">OpenClaw</span>
-            <button class="nx-switch on"><span class="nx-switch-thumb" /></button>
+          <div
+            style="display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:9px;overflow:hidden;"
+          >
+            <button
+              style="padding:4px 10px 4px 8px;font-size:12px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .12s;"
+              :style="{
+                background: chatStore.runtimeMode === 'native_saas' ? 'var(--accent)' : 'transparent',
+                color: chatStore.runtimeMode === 'native_saas' ? 'var(--accent-ink)' : 'var(--muted)',
+              }"
+              @click="chatStore.runtimeMode = 'native_saas'"
+            >
+              <Zap :size="12" />
+              <span>SaaS</span>
+            </button>
+            <button
+              style="padding:4px 10px 4px 8px;font-size:12px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .12s;"
+              :style="{
+                background: chatStore.runtimeMode === 'native_pro' ? 'var(--accent)' : 'transparent',
+                color: chatStore.runtimeMode === 'native_pro' ? 'var(--accent-ink)' : 'var(--muted)',
+              }"
+              @click="chatStore.runtimeMode = 'native_pro'"
+            >
+              <Server :size="12" />
+              <span>Pro</span>
+            </button>
           </div>
           <button class="nx-icon-btn bordered"><MoreHorizontal :size="15" /></button>
         </div>
@@ -57,7 +48,7 @@
         <div style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:22px;">
           <div v-if="chatStore.messages.length === 0" style="text-align:center;padding:48px 0;">
             <div style="font-size:14px;color:var(--muted);margin-bottom:16px;">
-              What would you like {{ currentAgent?.name || 'Team Lead' }} to do?
+              What would you like Nexoria to do?
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
               <button
@@ -76,10 +67,10 @@
             </div>
             <!-- Assistant message -->
             <div v-else style="display:flex;gap:12px;align-items:flex-start;">
-              <NxAvatar :name="msg.agentName || currentAgent?.name || 'Agent'" :color="agentColor(currentAgent)" />
+              <NxAvatar :name="msg.agentName || orchestrator?.name || 'Nexoria'" :color="agentColor(orchestrator)" />
               <div style="flex:1;min-width:0;">
                 <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
-                  <span style="font-size:13px;font-weight:600;">{{ msg.agentName || currentAgent?.name || 'Agent' }}</span>
+                  <span style="font-size:13px;font-weight:600;">{{ msg.agentName || orchestrator?.name || 'Nexoria' }}</span>
                   <span style="font-size:11px;color:var(--muted);">just now</span>
                 </div>
                 <div style="font-size:14px;line-height:1.55;white-space:pre-wrap;">{{ msg.content }}</div>
@@ -120,7 +111,7 @@
           </template>
 
           <div v-if="chatStore.isLoading" style="display:flex;gap:12px;align-items:flex-start;">
-            <NxAvatar :name="currentAgent?.name || 'Agent'" :color="agentColor(currentAgent)" />
+            <NxAvatar :name="orchestrator?.name || 'Nexoria'" :color="agentColor(orchestrator)" />
             <div style="padding-top:8px;">
               <span style="font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;">
                 <span class="nx-live-dot" /> Working
@@ -136,7 +127,7 @@
           <div style="border:1px solid var(--line);border-radius:14px;background:var(--bg-elev);padding:12px;box-shadow:var(--shadow-1);">
             <textarea
               v-model="message"
-              :placeholder="`Message ${currentAgent?.name || 'Team Lead'}…`"
+              placeholder="Message Nexoria…"
               style="width:100%;border:none;outline:none;background:transparent;resize:none;font-size:14px;color:var(--ink);min-height:48px;font-family:var(--font-sans);"
               rows="2"
               @keydown="onKeydown"
@@ -165,11 +156,15 @@
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div style="display:flex;justify-content:space-between;font-size:12.5px;">
             <span style="color:var(--muted);">Model</span>
-            <span style="font-weight:500;font-family:var(--font-mono);">{{ (currentAgent?.model || 'claude-sonnet-4').replace('claude-', '') }}</span>
+            <span style="font-weight:500;font-family:var(--font-mono);">{{ orchestrator?.modelName || 'gpt-4o' }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+            <span style="color:var(--muted);">Mode</span>
+            <span style="font-weight:500;">{{ chatStore.runtimeMode === 'native_pro' ? 'Pro (VPS)' : 'SaaS (in-process)' }}</span>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:12.5px;">
             <span style="color:var(--muted);">Autonomy</span>
-            <span style="font-weight:500;">Level {{ currentAgent?.autonomyLevel ?? 1 }}</span>
+            <span style="font-weight:500;">Level {{ orchestrator?.defaultAutonomyLevel ?? 1 }}</span>
           </div>
         </div>
 
@@ -195,20 +190,17 @@
 </template>
 
 <script setup lang="ts">
-import { Plus, Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield, Check, X, Eye } from 'lucide-vue-next'
+import { Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield, Check, X, Eye, Zap } from 'lucide-vue-next'
 import { File as FileIcon } from 'lucide-vue-next'
 
 definePageMeta({ middleware: 'auth' })
 
-const route = useRoute()
 const { agents: rawAgents, fetchAgents } = useAgent()
 const chatStore = useChatStore()
 
-onMounted(() => { void fetchAgents(); void fetchRuntime() })
+onMounted(() => { void fetchAgents() })
 
-const currentAgentId = computed(() => route.params.profile as string || 'orchestrator')
-const allAgents = computed(() => rawAgents.value)
-const currentAgent = computed(() => rawAgents.value.find((a: any) => a.id === currentAgentId.value) || rawAgents.value[0])
+const orchestrator = computed(() => rawAgents.value.find((a: any) => a.role === 'orchestrator') || rawAgents.value[0])
 
 const agentColorPalette = ['#C25B3F', '#7C5CC2', '#3F8FC2', '#5C9C6E', '#C29A3F']
 function agentColor (a: any): string {
@@ -222,9 +214,9 @@ const scrollRef = ref<HTMLDivElement>()
 
 const starterPrompts = [
   'What needs my attention today?',
-  'Plan a 7-day Instagram campaign',
-  'Find 3 micro-influencers',
-  'Draft a reply to last week\'s reviews',
+  'Create a task for my outreach campaign',
+  'Summarize recent activity',
+  'Help me plan this week',
 ]
 
 const { artifacts, fetchRuntime, artifactUrl } = useManagedRuntime()
@@ -245,7 +237,7 @@ function sendPrompt (p: string) {
 function sendMessage () {
   const content = message.value.trim()
   if (!content || chatStore.isLoading) return
-  void chatStore.sendMessage(content, currentAgentId.value, 'openclaw')
+  void chatStore.sendMessage(content, orchestrator.value?.id || 'orchestrator')
   message.value = ''
 }
 

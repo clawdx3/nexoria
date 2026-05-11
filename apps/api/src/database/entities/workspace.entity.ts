@@ -16,6 +16,8 @@ import { AgentProfile } from './agent-profile.entity';
 import { MemoryEntry } from './memory-entry.entity';
 import { AuditLog } from './audit-log.entity';
 
+export type WorkspacePlanTier = 'free' | 'lite' | 'pro' | 'enterprise';
+
 @Entity('workspaces')
 export class Workspace {
   @PrimaryGeneratedColumn('uuid')
@@ -29,6 +31,12 @@ export class Workspace {
 
   @Column({ nullable: true })
   logoUrl: string;
+
+  @Column({ type: 'enum', enum: ['free', 'lite', 'pro', 'enterprise'], default: 'free' })
+  planTier: WorkspacePlanTier;
+
+  @Column({ type: 'timestamp', nullable: true })
+  planExpiresAt: Date;
 
   @Column({ type: 'jsonb', nullable: true })
   settings: Record<string, any>;

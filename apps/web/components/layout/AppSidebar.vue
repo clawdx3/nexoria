@@ -45,7 +45,7 @@
       <div class="nx-health" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:9px;background:var(--bg-sunk);border:1px solid var(--line);margin-bottom:8px;">
         <span style="display:inline-flex;align-items:center;gap:8px;font-size:12px;">
           <span class="nx-live-dot" />
-          <span>VPS · OpenClaw online</span>
+          <span>Online</span>
         </span>
         <span class="mono" style="font-size:11px;color:var(--muted);">98%</span>
       </div>
@@ -66,7 +66,7 @@
 <script setup lang="ts">
 import {
   Home, MessageSquare, CheckSquare, Shield, Bot, Plug, Workflow,
-  Brain, Clock, Server, Settings, Search, ChevronDown
+  Brain, Clock, Settings, Search, ChevronDown, Server, CreditCard
 } from 'lucide-vue-next'
 
 const emit = defineEmits<{ cmdK: [] }>()
@@ -78,7 +78,10 @@ const { pendingApprovals } = useApprovals()
 const tasksStore = useTasksStore()
 
 const workspaceName = computed(() => workspaceStore.currentWorkspace?.name || 'My Workspace')
-const workspacePlan = computed(() => 'Growth plan')
+const workspacePlan = computed(() => {
+  const tier = workspaceStore.currentWorkspace?.planTier || 'free'
+  return `${tier.charAt(0).toUpperCase() + tier.slice(1)} plan`
+})
 const workspaceInitials = computed(() => {
   const name = workspaceName.value
   return name.split(/\s+/).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
@@ -104,7 +107,8 @@ const buildNav = [
 
 const opsNav = [
   { to: '/settings/memory', label: 'Memory', icon: Brain },
+  { to: '/settings/runtime', label: 'Servers', icon: Server },
+  { to: '/settings/billing', label: 'Billing', icon: CreditCard },
   { to: '/schedules', label: 'Schedules', icon: Clock },
-  { to: '/settings/runtime', label: 'Runtime', icon: Server },
 ]
 </script>

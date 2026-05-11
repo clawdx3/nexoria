@@ -78,6 +78,22 @@ export class AgentProfilesService implements OnModuleInit {
     const modelName = process.env.OLLAMA_MODEL || process.env.DEFAULT_MODEL_NAME || 'gpt-oss:120b';
     const builtIns: Array<Partial<AgentProfile> & { name: string; systemPrompt: string; enabledTools: string[]; legacyNames?: string[] }> = [
       {
+        name: 'Orchestrator',
+        description: 'Your main AI assistant. Routes work to specialist agents when needed.',
+        systemPrompt: [
+          'You are Nexoria, an AI assistant that helps users manage their work.',
+          'You can create tasks, search memory, and delegate work to specialist agents.',
+          'You have a `delegate_to_specialist` tool. When a user request matches a specialist\'s expertise, ALWAYS delegate instead of trying to handle it yourself.',
+          'Available specialists: social_media (Facebook/Instagram posts), email_outreach (email campaigns), researcher (web research), content_creator (blog/article writing).',
+          'To delegate: call delegate_to_specialist with the specialist name and a detailed prompt.',
+          'For general requests that don\'t match a specialist, handle them directly.',
+          'Always be concise and action-oriented.',
+        ].join(' '),
+        enabledTools: ['create_task', 'list_tasks', 'update_task_status', 'create_memory', 'search_memory', 'delegate_to_specialist'],
+        role: 'orchestrator' as AgentRole,
+        defaultAutonomyLevel: 2,
+      },
+      {
         name: 'Social Media Agent',
         description: 'Creates and revises social media drafts for review.',
         systemPrompt: [
@@ -144,8 +160,8 @@ export class AgentProfilesService implements OnModuleInit {
         modelName,
         modelConfig: {},
         enabledTools: desired.enabledTools,
-        role: 'specialist' as AgentRole,
-        defaultAutonomyLevel: 1,
+        role: (desired as any).role ?? ('specialist' as AgentRole),
+        defaultAutonomyLevel: (desired as any).defaultAutonomyLevel ?? 1,
         isBuiltIn: true,
         isEnabled: existing?.isEnabled ?? true,
       };
@@ -215,7 +231,7 @@ export class AgentProfilesService implements OnModuleInit {
       defaultAutonomyLevel: p.defaultAutonomyLevel,
       isBuiltIn: p.isBuiltIn,
       isEnabled: p.isEnabled ?? true,
-      runtimeMode: p.runtimeMode ?? 'openclaw',
+      runtimeMode: p.runtimeMode ?? 'native_saas',
       planTier: p.planTier ?? 'economy',
       remoteConfig: p.remoteConfig ?? {},
       createdAt: p.createdAt,

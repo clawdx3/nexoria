@@ -6,9 +6,9 @@ export class Config {
   agentToken: string = process.env.NEXORIA_AGENT_TOKEN || '';
   workspaceId: string = process.env.NEXORIA_WORKSPACE_ID || '';
   agentProfileId: string = process.env.NEXORIA_AGENT_PROFILE_ID || '';
-  llmProvider: string = process.env.LLM_PROVIDER || 'openai';
-  llmApiKey: string = process.env.LLM_API_KEY || '';
-  llmModel: string = process.env.LLM_MODEL || 'gpt-4o';
+  llmProvider: string = process.env.LLM_PROVIDER || process.env.PRO_AGENT_LLM_PROVIDER || 'ollama';
+  llmApiKey: string = process.env.LLM_API_KEY || process.env.PRO_AGENT_LLM_API_KEY || process.env.OLLAMA_API_KEY || '';
+  llmModel: string = process.env.LLM_MODEL || process.env.PRO_AGENT_LLM_MODEL || process.env.OLLAMA_MODEL || 'gpt-4o';
   localDir: string = process.env.LOCAL_DIR || './data';
   syncToApi: boolean = process.env.SYNC_TO_API !== 'false';
 
@@ -22,9 +22,9 @@ export class Config {
     if (process.env.NEXORIA_AGENT_TOKEN) this.agentToken = process.env.NEXORIA_AGENT_TOKEN;
     if (process.env.NEXORIA_WORKSPACE_ID) this.workspaceId = process.env.NEXORIA_WORKSPACE_ID;
     if (process.env.NEXORIA_AGENT_PROFILE_ID) this.agentProfileId = process.env.NEXORIA_AGENT_PROFILE_ID;
-    if (process.env.LLM_PROVIDER) this.llmProvider = process.env.LLM_PROVIDER;
-    if (process.env.LLM_API_KEY) this.llmApiKey = process.env.LLM_API_KEY;
-    if (process.env.LLM_MODEL) this.llmModel = process.env.LLM_MODEL;
+    if (process.env.LLM_PROVIDER || process.env.PRO_AGENT_LLM_PROVIDER) this.llmProvider = process.env.LLM_PROVIDER || process.env.PRO_AGENT_LLM_PROVIDER!;
+    if (process.env.LLM_API_KEY || process.env.PRO_AGENT_LLM_API_KEY || process.env.OLLAMA_API_KEY) this.llmApiKey = process.env.LLM_API_KEY || process.env.PRO_AGENT_LLM_API_KEY || process.env.OLLAMA_API_KEY!;
+    if (process.env.LLM_MODEL || process.env.PRO_AGENT_LLM_MODEL || process.env.OLLAMA_MODEL) this.llmModel = process.env.LLM_MODEL || process.env.PRO_AGENT_LLM_MODEL || process.env.OLLAMA_MODEL!;
     if (process.env.LOCAL_DIR) this.localDir = process.env.LOCAL_DIR;
     if (process.env.SYNC_TO_API) this.syncToApi = process.env.SYNC_TO_API !== 'false';
   }

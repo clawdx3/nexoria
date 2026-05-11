@@ -1,16 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsEnum, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { RuntimeJobStatus, RuntimeJobType } from '../../../database/entities/runtime-job.entity';
-import { RuntimeChatCommandStatus } from '../../../database/entities/runtime-chat-command.entity';
 
 export class CreateRuntimeJobDto {
   @ApiProperty({ example: 'orchestrator' })
   @IsString()
   agentProfileId: string;
 
-  @ApiPropertyOptional({ enum: ['openclaw_task', 'create_file', 'research', 'browser_task', 'native_pro_chat', 'native_pro_task'] })
+  @ApiPropertyOptional({ enum: ['create_file', 'research', 'browser_task', 'native_pro_chat', 'native_pro_task'] })
   @IsOptional()
-  @IsEnum(['openclaw_task', 'create_file', 'research', 'browser_task', 'native_pro_chat', 'native_pro_task'])
+  @IsEnum(['create_file', 'research', 'browser_task', 'native_pro_chat', 'native_pro_task'])
   type?: RuntimeJobType;
 
   @ApiProperty({ example: { prompt: 'Create a CSV with three lead follow-up tasks.' } })
@@ -102,6 +101,21 @@ export class CompleteRuntimeJobDto {
   error?: string;
 }
 
+export class DelegateToSpecialistDto {
+  @ApiProperty({ description: 'Agent profile ID or name of the specialist' })
+  @IsString()
+  specialistId: string;
+
+  @ApiProperty({ description: 'The task/prompt for the specialist' })
+  @IsString()
+  prompt: string;
+
+  @ApiPropertyOptional({ description: 'Parent chat session ID for context' })
+  @IsOptional()
+  @IsString()
+  parentSessionId?: string;
+}
+
 export class UploadArtifactDto {
   @ApiProperty()
   @IsString()
@@ -162,7 +176,7 @@ export class CreateRuntimeChatSessionDto {
 }
 
 export class SendRuntimeChatMessageDto {
-  @ApiProperty({ example: 'Help me plan today’s outreach tasks.' })
+  @ApiProperty({ example: 'Help me plan today outreach tasks.' })
   @IsString()
   content: string;
 
@@ -171,51 +185,9 @@ export class SendRuntimeChatMessageDto {
   @IsArray()
   @IsUUID(undefined, { each: true })
   attachmentIds?: string[];
-}
 
-export class CompleteRuntimeChatCommandDto {
-  @ApiProperty({ enum: ['completed', 'failed', 'cancelled'] })
-  @IsEnum(['completed', 'failed', 'cancelled'])
-  status: RuntimeChatCommandStatus;
-
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ enum: ['native_saas', 'native_pro'], description: 'Override agent runtime mode for this message' })
   @IsOptional()
-  @IsObject()
-  result?: Record<string, any>;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  error?: string;
-}
-
-export class RuntimeChatRunnerEventDto {
-  @ApiProperty({ example: 'assistant_final' })
-  @IsString()
-  type: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  content?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  status?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  runId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  messageId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsObject()
-  metadata?: Record<string, any>;
+  @IsEnum(['native_saas', 'native_pro'])
+  runtimeMode?: 'native_saas' | 'native_pro';
 }

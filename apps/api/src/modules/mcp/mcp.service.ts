@@ -51,7 +51,7 @@ export class McpService {
   authenticate(authHeader: string | undefined): void {
     const expected = this.config.get<string>('NEXORIA_MCP_TOKEN') ?? process.env.NEXORIA_MCP_TOKEN;
     if (!expected) throw new UnauthorizedException('MCP token not configured on server');
-    // OpenClaw bundle-mcp client appends headers, so the upstream may receive
+    // Some MCP clients append headers multiple times, so the upstream may receive
     // a comma-joined value like "Bearer X, Bearer X". Accept the match if any
     // of the comma-separated parts matches the expected bearer token.
     const target = `Bearer ${expected}`;
@@ -293,7 +293,7 @@ export class McpService {
     this.tools.set('enqueue_specialist_job', {
       name: 'enqueue_specialist_job',
       description: [
-        'Canonical Nexoria tool for handing off background work to a specialist agent. This is a Nexoria-level delegation, not OpenClaw\'s sessions_spawn — never call sessions_spawn or /subagents spawn.',
+        'Canonical Nexoria tool for handing off background work to a specialist agent. This is a Nexoria-level delegation — never call sessions_spawn or /subagents spawn.',
         'Returns immediately with a queued runtime job. The specialist runs asynchronously; when it finishes, you will receive a follow-up turn in this chat prefixed with "[Nexoria announce]" containing the result. Summarize that result for the user when you see it.',
         'Use this when the orchestrator decides a specialist should work, or when the orchestrator would otherwise do non-trivial work itself.',
         'For social/content work, create a tracking task first with create_task, then call this with agentName "Social Media Agent" and the created taskId.',
@@ -310,7 +310,7 @@ export class McpService {
           agentName: { type: 'string', description: 'Optional target built-in or workspace agent name, e.g. "Social Media Agent". Used when agentProfileId is not known.' },
           taskId: { type: 'string', description: 'Optional Nexoria task id linked to this runtime job.' },
           prompt: { type: 'string', description: 'Clear work instructions for the delegated background agent.' },
-          type: { type: 'string', enum: ['openclaw_task', 'create_file', 'research', 'browser_task'], description: 'Runtime job type. Use openclaw_task unless another type is clearly required.' },
+          type: { type: 'string', enum: ['create_file', 'research', 'browser_task'], description: 'Runtime job type. Use create_file unless another type is clearly required.' },
           metadata: { type: 'object', description: 'Optional structured handoff metadata.' },
         },
         required: ['workspaceId', 'prompt'],
@@ -334,7 +334,7 @@ export class McpService {
           : args.prompt;
         const job = await this.managedRuntime.createJob(args.workspaceId, null, {
           agentProfileId,
-          type: args.type ?? 'openclaw_task',
+          type: args.type ?? 'create_file',
           input: {
             source: 'mcp:enqueue_specialist_job',
             taskId: args.taskId,

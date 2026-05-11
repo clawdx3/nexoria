@@ -9,14 +9,11 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
-COPY apps/openclaw-runner/package.json apps/openclaw-runner/package.json
 COPY apps/pro-agent/package.json apps/pro-agent/package.json
-COPY shared/types/package.json shared/types/package.json
 COPY packages/agent-core/package.json packages/agent-core/package.json
 RUN pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.json
 COPY apps/api apps/api
-COPY shared shared
 COPY packages packages
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN pnpm --filter @nexoria/agent-core build

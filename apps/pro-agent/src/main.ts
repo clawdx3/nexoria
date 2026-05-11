@@ -1,9 +1,12 @@
 import { Config } from './config';
-import { HttpProAgentApiClient } from './api-client';
+import { WsProAgentApiClient } from './api-client';
 import { ProAgentLoop } from './loop';
 import { resolveLlmAdapter } from './llm';
-import { registerDangerousTools } from './tools';
+import { registerDangerousTools, registerDelegationTool } from './tools';
+import { SubagentSpawner } from './subagents';
+import { loadOrCreateKeys, signMessage, getPublicKeyBase64 } from './keys/keys';
 import * as http from 'node:http';
+import * as nacl from 'tweetnacl';
 
 const config = new Config();
 const missing = config.validate();
@@ -13,7 +16,7 @@ if (missing.length > 0) {
 }
 
 const instanceKey = `pro-agent-${config.workspaceId}`;
-const api = new HttpProAgentApiClient(config);
+const api = new WsProAgentApiClient(config);
 const llm = resolveLlmAdapter({
   id: config.workspaceId,
   name: 'Pro Agent',
@@ -28,7 +31,14 @@ const llm = resolveLlmAdapter({
 });
 
 const agent = new ProAgentLoop(config, llm);
-registerDangerousTools(agent);
+registerDangerousTools(agent, config);
+
+const memoryProvider = new (require('./memory').NexoriaMemoryProvider)(config.nexoriaApiUrl, config.agentToken, config.workspaceId);
+const spawner = new SubagentSpawner(llm, agent.registry, memoryProvider);
+registerDelegationTool(agent, config, spawner, api);
+
+// Ensure Ed25519 keys exist
+loadOrCreateKeys(config.localDir);
 
 // Lightweight health server so Docker healthcheck passes
 const healthServer = http.createServer((req, res) => {
@@ -45,12 +55,13 @@ healthServer.listen(3002, () => {
 });
 
 async function main() {
+  // 1. Register instance via HTTP (with Ed25519 signed payload)
   let retries = 0;
   const maxRetries = 12;
   while (retries < maxRetries) {
     try {
       await api.registerInstance(instanceKey, {
-        workspaceId: config.workspaceId,
+        ed25519PublicKey: getPublicKeyBase64(config.localDir),
       });
       console.log('Registered instance:', instanceKey);
       break;
@@ -61,12 +72,22 @@ async function main() {
       await new Promise((r) => setTimeout(r, wait));
     }
   }
-
   if (retries >= maxRetries) {
     console.error('Max retries reached. API is unreachable.');
     process.exit(1);
   }
 
+  // 2. Connect WebSocket and authenticate with Ed25519 challenge-response
+  api.onAuthChallenge((payload: { nonce: string }) => {
+    const { privateKey } = loadOrCreateKeys(config.localDir);
+    const signature = signMessage(privateKey, payload.nonce);
+    api.emitAuthResponse(instanceKey, signature);
+  });
+
+  await api.connect();
+  console.log('WebSocket connected');
+
+  // 3. Heartbeat via HTTP every 15s
   setInterval(async () => {
     try {
       await api.heartbeat(instanceKey, 'ready');
@@ -75,6 +96,13 @@ async function main() {
     }
   }, 15000);
 
+  // 4. Listen for pushed jobs from API
+  api.onJobPushed(async (job) => {
+    console.log('Job pushed via WS:', job.id, job.type);
+    await runJob(job);
+  });
+
+  // 5. Claim loop (falls back if WS push missed)
   while (true) {
     try {
       const job = await api.claimNextJob(instanceKey);
@@ -83,41 +111,53 @@ async function main() {
         continue;
       }
       console.log('Claimed job:', job.id, job.type);
-
-      const input = job.input ?? {};
-      const profile: any = {
-        id: config.workspaceId,
-        name: 'Pro Agent',
-        systemPrompt: '',
-        modelProvider: config.llmProvider as any,
-        modelName: config.llmModel,
-        modelConfig: { apiKey: config.llmApiKey },
-        enabledTools: [],
-        role: 'specialist',
-        runtimeMode: 'native_pro',
-        defaultAutonomyLevel: 3,
-      };
-
-      const result = await agent.run(profile, input.content || '', undefined, (chunk) => {
-        api.postEvent(instanceKey, job.id, {
-          type: chunk.type,
-          level: 'info',
-          message: chunk.content || chunk.toolName || '',
-          metadata: { toolArgs: chunk.toolArgs, result: chunk.result },
-        });
-      });
-
-      await api.completeJob(instanceKey, job.id, {
-        status: result.success ? 'completed' : 'failed',
-        result: result.success ? { output: result.finalOutput } : undefined,
-        error: result.error || undefined,
-      });
-      console.log('Completed job:', job.id, result.success ? 'success' : 'failed');
+      await runJob(job);
     } catch (err: any) {
       console.error('Job loop error:', err.message);
       await new Promise((r) => setTimeout(r, 5000));
     }
   }
+}
+
+async function runJob(job: any) {
+  const input = job.input ?? {};
+  const profile: any = {
+    id: config.workspaceId,
+    name: 'Pro Agent',
+    systemPrompt: '',
+    modelProvider: config.llmProvider as any,
+    modelName: config.llmModel,
+    modelConfig: { apiKey: config.llmApiKey },
+    enabledTools: [],
+    role: 'specialist',
+    runtimeMode: 'native_pro',
+    defaultAutonomyLevel: 3,
+  };
+
+  const result = await agent.run(profile, input.content || '', undefined, (chunk) => {
+    if (job.type === 'native_pro_chat' && input.chatSessionId) {
+      if (chunk.type === 'token') {
+        api.emitChatChunk(input.chatSessionId, job.id, chunk.content || '');
+      }
+    }
+    api.postEvent(instanceKey, job.id, {
+      type: chunk.type,
+      level: 'info',
+      message: chunk.content || chunk.toolName || '',
+      metadata: { toolArgs: chunk.toolArgs, result: chunk.result },
+    });
+  });
+
+  if (job.type === 'native_pro_chat' && input.chatSessionId && result.success) {
+    api.emitChatFinal(input.chatSessionId, job.id, result.finalOutput || '');
+  }
+
+  await api.completeJob(instanceKey, job.id, {
+    status: result.success ? 'completed' : 'failed',
+    result: result.success ? { output: result.finalOutput } : undefined,
+    error: result.error || undefined,
+  });
+  console.log('Completed job:', job.id, result.success ? 'success' : 'failed');
 }
 
 main().catch((err) => {

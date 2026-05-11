@@ -1,0 +1,51 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - git
+  - jq
+
+write_files:
+  - path: /opt/nexoria/docker-compose.yml
+    permissions: '0644'
+    content: |
+      version: '3.8'
+      services:
+        pro-agent:
+          image: nexoria/pro-agent:latest
+          container_name: nexoria-pro-agent
+          restart: unless-stopped
+          env_file:
+            - .env
+          volumes:
+            - agent-data:/data
+          ports:
+            - "8080:8080"
+          healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+      volumes:
+        agent-data:
+
+  - path: /opt/nexoria/.env
+    permissions: '0600'
+    content: |
+      NEXORIA_API_URL={{NEXORIA_API_URL}}
+      NEXORIA_WORKSPACE_ID={{WORKSPACE_ID}}
+      NEXORIA_AGENT_ID={{AGENT_ID}}
+      NEXORIA_VPS_INSTANCE_ID={{VPS_INSTANCE_ID}}
+      NEXORIA_API_TOKEN={{API_TOKEN}}
+
+runcmd:
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable docker
+  - systemctl start docker
+  - mkdir -p /opt/nexoria/keys
+  - ssh-keygen -t ed25519 -f /opt/nexoria/keys/nexoria -N "" -C "nexoria-pro-agent"
+  - cd /opt/nexoria && docker compose pull
+  - cd /opt/nexoria && docker compose up -d
+  - echo "Nexoria Pro Agent bootstrap complete" > /opt/nexoria/bootstrap.done

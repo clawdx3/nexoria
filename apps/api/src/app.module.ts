@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import appConfig from './config/app.config';
 
 import { AuthModule } from './modules/auth/auth.module';
@@ -20,6 +21,8 @@ import { ManagedRuntimeModule } from './modules/managed-runtime/managed-runtime.
 import { McpModule } from './modules/mcp/mcp.module';
 import { SocialPostDraftsModule } from './modules/social-post-drafts/social-post-drafts.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
+import { BillingModule } from './modules/billing/billing.module';
+import { VpsProvisioningModule } from './modules/vps-provisioning/vps-provisioning.module';
 import * as entities from './database/entities';
 
 @Module({
@@ -43,6 +46,7 @@ import * as entities from './database/entities';
         logging: config.get('app.nodeEnv') === 'development',
       }),
     }),
+    EventEmitterModule.forRoot(),
     AuthModule,
     UsersModule,
     WorkspacesModule,
@@ -60,6 +64,8 @@ import * as entities from './database/entities';
     AttachmentsModule,
     McpModule,
     SocialPostDraftsModule,
+    BillingModule,
+    VpsProvisioningModule,
   ],
 })
 export class AppModule {}

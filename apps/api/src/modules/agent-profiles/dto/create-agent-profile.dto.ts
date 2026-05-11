@@ -50,9 +50,9 @@ export class CreateAgentProfileDto {
   @IsBoolean()
   isEnabled?: boolean;
 
-  @ApiPropertyOptional({ enum: ['openclaw', 'native_saas', 'native_pro'], default: 'openclaw' })
+  @ApiPropertyOptional({ enum: ['native_saas', 'native_pro'], default: 'native_saas' })
   @IsOptional()
-  @IsEnum(['openclaw', 'native_saas', 'native_pro'])
+  @IsEnum(['native_saas', 'native_pro'])
   runtimeMode?: RuntimeMode;
 
   @ApiPropertyOptional({ enum: ['economy', 'pro', 'enterprise'], default: 'economy' })
@@ -113,9 +113,9 @@ export class UpdateAgentProfileDto {
   @IsBoolean()
   isEnabled?: boolean;
 
-  @ApiPropertyOptional({ enum: ['openclaw', 'native_saas', 'native_pro'] })
+  @ApiPropertyOptional({ enum: ['native_saas', 'native_pro'] })
   @IsOptional()
-  @IsEnum(['openclaw', 'native_saas', 'native_pro'])
+  @IsEnum(['native_saas', 'native_pro'])
   runtimeMode?: RuntimeMode;
 
   @ApiPropertyOptional({ enum: ['economy', 'pro', 'enterprise'] })
