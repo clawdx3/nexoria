@@ -38,15 +38,14 @@
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
           <div style="padding:8px 10px;background:var(--bg-sunk);border-radius:8px;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Runtime</div>
+            <div style="font-size:13px;font-weight:500;">{{ runtimeLabel(a.runtimeProvider) }}</div>
+          </div>
+          <div style="padding:8px 10px;background:var(--bg-sunk);border-radius:8px;">
             <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Model</div>
             <div style="font-size:13px;font-weight:500;font-family:var(--font-mono);">{{ (a.model || 'claude-sonnet-4').replace('claude-', '') }}</div>
           </div>
-          <div style="padding:8px 10px;background:var(--bg-sunk);border-radius:8px;">
-            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Autonomy</div>
-            <div style="font-size:13px;font-weight:500;">Level {{ a.autonomyLevel ?? 1 }}</div>
-          </div>
         </div>
-
         <div style="display:flex;gap:6px;">
           <button class="nx-btn nx-btn-ghost nx-btn-sm" style="flex:1;" @click="openBuilder(a)">
             <Edit :size="12" /> Edit
@@ -129,6 +128,21 @@
 
           <div v-if="builderStep === 2" style="display:flex;flex-direction:column;gap:16px;">
             <div>
+              <label style="display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:8px;">Runtime</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                <button
+                  v-for="rt in [{ id: 'openclaw', name: 'OpenClaw', desc: 'Managed runtime' }, { id: 'nexoria', name: 'Nexoria', desc: 'Built-in executor' }, { id: 'power-agent', name: 'Power Agent', desc: 'Dedicated server' }]"
+                  :key="rt.id"
+                  style="padding:12px;text-align:left;border-radius:10px;cursor:pointer;"
+                  :style="{ border: '1px solid ' + (builderForm.runtimeProvider === rt.id ? 'var(--accent)' : 'var(--line)'), background: builderForm.runtimeProvider === rt.id ? 'var(--accent-soft)' : 'var(--bg-elev)' }"
+                  @click="builderForm.runtimeProvider = rt.id"
+                >
+                  <div style="font-size:13px;font-weight:600;margin-bottom:2px;">{{ rt.name }}</div>
+                  <div style="font-size:11px;color:var(--muted);">{{ rt.desc }}</div>
+                </button>
+              </div>
+            </div>
+            <div>
               <label style="display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:8px;">Model</label>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                 <button
@@ -200,7 +214,13 @@ const builderOpen = ref(false)
 const builderAgent = ref<any>(null)
 const builderStep = ref(1)
 const saving = ref(false)
-const builderForm = reactive({ name: '', description: '', color: '#C25B3F', model: 'claude-sonnet-4', autonomyLevel: 1 })
+const builderForm = reactive({ name: '', description: '', color: '#C25B3F', model: 'claude-sonnet-4', autonomyLevel: 1, runtimeProvider: 'openclaw' as string })
+
+function runtimeLabel (rp: string): string {
+  if (rp === 'power-agent') return 'Power Agent'
+  if (rp === 'nexoria') return 'Nexoria'
+  return 'OpenClaw'
+}
 
 function openBuilder (agent: any) {
   builderAgent.value = agent
@@ -212,9 +232,10 @@ function openBuilder (agent: any) {
       color: agent.metadata?.color || '#C25B3F',
       model: agent.model || 'claude-sonnet-4',
       autonomyLevel: agent.autonomyLevel ?? 1,
+      runtimeProvider: agent.runtimeProvider || 'openclaw',
     })
   } else {
-    Object.assign(builderForm, { name: '', description: '', color: '#C25B3F', model: 'claude-sonnet-4', autonomyLevel: 1 })
+    Object.assign(builderForm, { name: '', description: '', color: '#C25B3F', model: 'claude-sonnet-4', autonomyLevel: 1, runtimeProvider: 'openclaw' })
   }
   builderOpen.value = true
 }
@@ -227,6 +248,7 @@ async function saveAgent () {
       description: builderForm.description,
       model: builderForm.model,
       autonomyLevel: builderForm.autonomyLevel,
+      runtimeProvider: builderForm.runtimeProvider,
       metadata: { color: builderForm.color },
     }
     if (builderAgent.value?.id) {

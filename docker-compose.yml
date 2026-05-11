@@ -77,7 +77,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: nexoria
-      DB_PASSWORD: change-me
+      DB_PASSWORD: ${DB_PASSWORD:-nexoria}
       DB_NAME: nexoria
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
@@ -139,7 +139,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: nexoria
-      DB_PASSWORD: change-me
+      DB_PASSWORD: ${DB_PASSWORD:-nexoria}
       DB_NAME: nexoria
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
@@ -170,7 +170,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: nexoria
-      DB_PASSWORD: change-me
+      DB_PASSWORD: ${DB_PASSWORD:-nexoria}
       DB_NAME: nexoria
     depends_on:
       postgres:

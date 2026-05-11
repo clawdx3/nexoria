@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { Approval, ChatActionCard, ChatMessage, Task } from '~/types'
 
-type ChatRuntimeMode = 'nexoria' | 'openclaw'
+type ChatRuntimeMode = 'nexoria' | 'openclaw' | 'power-agent'
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
@@ -36,6 +36,8 @@ export const useChatStore = defineStore('chat', () => {
     try {
       if (runtimeMode === 'openclaw') {
         await runOpenClawChat(workspaceId, agentProfileId, content, uploadedAttachments.map(attachment => attachment.id))
+      } else if (runtimeMode === 'power-agent') {
+        await runPowerAgentChat(workspaceId, agentProfileId, content)
       } else {
         const assistantContent = await runNexoriaChat(workspaceId, agentProfileId, content)
         const assistantMsg: ChatMessage = {
@@ -48,7 +50,7 @@ export const useChatStore = defineStore('chat', () => {
         messages.value.push(assistantMsg)
       }
       await useTasksStore().fetchTasks(workspaceId)
-      if (runtimeMode !== 'openclaw') {
+      if (runtimeMode === 'nexoria') {
         await appendWorkspaceActionCards(workspaceId, userMsg.timestamp)
         startActionCardPolling(workspaceId, userMsg.timestamp)
       }
@@ -61,7 +63,7 @@ export const useChatStore = defineStore('chat', () => {
         timestamp: new Date().toISOString()
       })
     } finally {
-      if (runtimeMode !== 'openclaw') isLoading.value = false
+      if (runtimeMode === 'nexoria') isLoading.value = false
     }
   }
 
@@ -74,6 +76,72 @@ export const useChatStore = defineStore('chat', () => {
       }
     )
     return res.message || 'Task dispatched.'
+  }
+
+  async function runPowerAgentChat (workspaceId: string, agentProfileId: string, content: string): Promise<void> {
+    isLoading.value = true
+    try {
+      const res = await useApi<{ id: string; type: string; status: string; payload: Record<string, any>; result?: Record<string, any> }>(
+        `/agent-hub/tasks`,
+        {
+          method: 'POST',
+          body: {
+            type: 'chat',
+            payload: { agentProfileId, content, workspaceId }
+          }
+        }
+      )
+      const taskId = res.id
+      const placeholder: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: 'Thinking...',
+        agentProfileId,
+        timestamp: new Date().toISOString()
+      }
+      messages.value.push(placeholder)
+
+      const pollInterval = 2000
+      const maxPolls = 60
+      let polls = 0
+      const poll = async (): Promise<void> => {
+        try {
+          const task = await useApi<{ id: string; status: string; result?: Record<string, any>; error?: string }>(`/agent-hub/tasks/${taskId}`)
+          if (task.status === 'completed' && task.result) {
+            placeholder.content = task.result.message || task.result.content || JSON.stringify(task.result)
+            isLoading.value = false
+            return
+          }
+          if (task.status === 'failed') {
+            placeholder.content = task.error || 'Power agent task failed.'
+            isLoading.value = false
+            return
+          }
+          polls++
+          if (polls >= maxPolls) {
+            placeholder.content = 'Power agent is still processing. Check back later.'
+            isLoading.value = false
+            return
+          }
+          await new Promise(r => setTimeout(r, pollInterval))
+          await poll()
+        } catch {
+          placeholder.content = 'Lost connection to power agent.'
+          isLoading.value = false
+        }
+      }
+      void poll()
+    } catch (e: any) {
+      error.value = e?.message || 'Power agent request failed'
+      messages.value.push({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: `Error: ${error.value}`,
+        timestamp: new Date().toISOString()
+      })
+    } finally {
+      isLoading.value = false
+    }
   }
 
   async function runOpenClawChat (workspaceId: string, agentProfileId: string, content: string, attachmentIds: string[] = []): Promise<void> {

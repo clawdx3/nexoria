@@ -218,6 +218,10 @@ export class AgentHubService {
     return Array.from(this.tasks.values());
   }
 
+  getTask(id: string): AgentTask | null {
+    return this.tasks.get(id) ?? null;
+  }
+
   getAgents(): ConnectedAgent[] {
     return Array.from(this.agents.values());
   }

@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
-import { AgentProfile, AgentRole, ModelProvider } from '../../database/entities/agent-profile.entity';
+import { AgentProfile, AgentRole, ModelProvider, RuntimeProvider } from '../../database/entities/agent-profile.entity';
 import { CreateAgentProfileDto, UpdateAgentProfileDto, AgentProfileResponseDto } from './dto/create-agent-profile.dto';
 
 @Injectable()
@@ -29,6 +29,7 @@ export class AgentProfilesService implements OnModuleInit {
       defaultAutonomyLevel: dto.defaultAutonomyLevel ?? 1,
       isEnabled: dto.isEnabled ?? true,
       isBuiltIn: false,
+      runtimeProvider: (dto.runtimeProvider as RuntimeProvider) ?? 'openclaw',
     });
     const saved = await this.repo.save(profile);
     return this.toDto(saved);
@@ -148,6 +149,7 @@ export class AgentProfilesService implements OnModuleInit {
         defaultAutonomyLevel: 1,
         isBuiltIn: true,
         isEnabled: existing?.isEnabled ?? true,
+        runtimeProvider: existing?.runtimeProvider ?? ('openclaw' as RuntimeProvider),
       };
       if (existing) {
         await this.repo.update(existing.id, patch);
@@ -197,6 +199,7 @@ export class AgentProfilesService implements OnModuleInit {
       defaultAutonomyLevel: base.defaultAutonomyLevel,
       isBuiltIn: true,
       isEnabled,
+      runtimeProvider: base.runtimeProvider ?? 'openclaw',
     };
   }
 
@@ -215,6 +218,7 @@ export class AgentProfilesService implements OnModuleInit {
       defaultAutonomyLevel: p.defaultAutonomyLevel,
       isBuiltIn: p.isBuiltIn,
       isEnabled: p.isEnabled ?? true,
+      runtimeProvider: p.runtimeProvider ?? 'openclaw',
       createdAt: p.createdAt,
     };
   }

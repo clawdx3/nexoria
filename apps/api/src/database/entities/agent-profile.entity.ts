@@ -11,6 +11,7 @@ import { Workspace } from './workspace.entity';
 
 export type ModelProvider = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'custom';
 export type AgentRole = 'orchestrator' | 'specialist';
+export type RuntimeProvider = 'nexoria' | 'openclaw' | 'power-agent';
 
 @Entity('agent_profiles')
 export class AgentProfile {
@@ -56,6 +57,9 @@ export class AgentProfile {
 
   @Column({ default: true })
   isEnabled: boolean;
+
+  @Column({ type: 'enum', enum: ['nexoria', 'openclaw', 'power-agent'], default: 'openclaw' })
+  runtimeProvider: RuntimeProvider;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -25,8 +25,9 @@ COPY --from=build /app/apps/power-agent-runtime/package.json apps/power-agent-ru
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/apps/power-agent-runtime/node_modules apps/power-agent-runtime/node_modules
 # Install system deps for power agent (sqlite, git)
-RUN apk add --no-cache sqlite3 git curl ca-certificates
-RUN mkdir -p /var/nexoria/data /var/nexoria/skills /var/nexoria/tools
+RUN apk add --no-cache sqlite git curl ca-certificates
+RUN mkdir -p /var/nexoria/data /var/nexoria/skills /var/nexoria/tools && \
+    chown -R node:node /var/nexoria
 ENV NEXORIA_DATA_DIR=/var/nexoria/data
 ENV NEXORIA_SKILLS_DIR=/var/nexoria/skills
 ENV NEXORIA_TOOLS_DIR=/var/nexoria/tools

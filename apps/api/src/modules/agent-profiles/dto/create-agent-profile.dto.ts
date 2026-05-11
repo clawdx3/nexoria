@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsObject, IsArray, IsInt, IsEnum, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AgentRole, ModelProvider } from '../../../database/entities/agent-profile.entity';
+import { AgentRole, ModelProvider, RuntimeProvider } from '../../../database/entities/agent-profile.entity';
 
 export class CreateAgentProfileDto {
   @ApiProperty({ example: 'Social Media Agent' })
@@ -49,6 +49,11 @@ export class CreateAgentProfileDto {
   @IsOptional()
   @IsBoolean()
   isEnabled?: boolean;
+
+  @ApiPropertyOptional({ enum: ['nexoria', 'openclaw', 'power-agent'], default: 'openclaw' })
+  @IsOptional()
+  @IsEnum(['nexoria', 'openclaw', 'power-agent'])
+  runtimeProvider?: RuntimeProvider;
 }
 
 export class UpdateAgentProfileDto {
@@ -97,6 +102,11 @@ export class UpdateAgentProfileDto {
   @IsOptional()
   @IsBoolean()
   isEnabled?: boolean;
+
+  @ApiPropertyOptional({ enum: ['nexoria', 'openclaw', 'power-agent'] })
+  @IsOptional()
+  @IsEnum(['nexoria', 'openclaw', 'power-agent'])
+  runtimeProvider?: RuntimeProvider;
 }
 
 export class AgentProfileResponseDto {
@@ -138,6 +148,9 @@ export class AgentProfileResponseDto {
 
   @ApiProperty()
   isEnabled: boolean;
+
+  @ApiProperty({ enum: ['nexoria', 'openclaw', 'power-agent'] })
+  runtimeProvider: string;
 
   @ApiProperty()
   createdAt: Date;

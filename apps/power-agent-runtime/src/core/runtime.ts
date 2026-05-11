@@ -39,6 +39,9 @@ export class AgentRuntime extends EventEmitter {
     this.subagents = new SubagentManager();
 
     // Hub event handlers
+    this.hub.on('error', (err: Error) => {
+      console.warn('[runtime] hub connection error:', err.message);
+    });
     this.hub.on('config_update', this.onConfigUpdate.bind(this));
     this.hub.on('task_offer', this.onTaskOffer.bind(this));
     this.hub.on('approval_response', this.onApprovalResponse.bind(this));
@@ -65,8 +68,8 @@ export class AgentRuntime extends EventEmitter {
       await this.skills.load(skillId);
     }
 
-    // Connect to hub
-    await this.hub.connect();
+    // Connect to hub (tolerates initial failure; reconnects automatically)
+    this.hub.connect().catch(() => {});
     
     console.log(`[runtime] booted agent=${config.agentId} user=${config.userId}`);
     this.emit('booted', config);

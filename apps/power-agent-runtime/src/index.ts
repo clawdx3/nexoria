@@ -50,15 +50,15 @@ const config: AgentConfig = {
   },
   
   models: {
-    default: 'ollama/llama3.3',
-    fast: 'ollama/llama3.3',
+    default: 'ollama/kimi-k2.6:cloud',
+    fast: 'ollama/kimi-k2.6:cloud',
     providers: [
       {
         id: 'ollama',
         type: 'ollama',
         baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
         apiKey: process.env.OLLAMA_API_KEY || '',
-        models: ['llama3.3', 'llama3.2'],
+        models: ['kimi-k2.6:cloud', 'kimi-k2.6:cloud'],
       },
       {
         id: 'openrouter',

@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
-import { AgentHubService } from './agent-hub.service';
+import { AgentHubService, AgentTask } from './agent-hub.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @ApiTags('Agent Hub')
@@ -18,8 +18,20 @@ export class AgentHubController {
 
   @Get('tasks')
   @ApiResponse({ status: 200 })
-  getTasks(): any[] {
+  getTasks(): AgentTask[] {
     return this.service.getTasks();
+  }
+
+  @Get('tasks/:id')
+  @ApiResponse({ status: 200 })
+  getTask(@Param('id') id: string): AgentTask | null {
+    return this.service.getTask(id);
+  }
+
+  @Post('tasks')
+  @ApiResponse({ status: 201 })
+  createTask(@Body() body: { type: string; payload: Record<string, any> }): AgentTask {
+    return this.service.createTask(body.type, body.payload);
   }
 
   @Get('approvals')

@@ -1,4 +1,4 @@
-import WebSocket from 'ws';
+import { io, Socket } from 'socket.io-client';
 import { EventEmitter } from 'events';
 import { AgentConfig, HubConnectionConfig } from '../config/types';
 
@@ -57,8 +57,7 @@ export interface ApprovalRequest {
 }
 
 export class HubClient extends EventEmitter {
-  private ws: WebSocket | null = null;
-  private connecting: Promise<void> | null = null;
+  private socket: Socket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private backoffMs: number;
@@ -73,36 +72,33 @@ export class HubClient extends EventEmitter {
   }
 
   async connect(): Promise<void> {
-    if (this.connecting) return this.connecting;
-    this.connecting = this.doConnect();
-    try {
-      await this.connecting;
-    } finally {
-      this.connecting = null;
-    }
-  }
+    const rawUrl = this.config.hubUrl.replace(/^ws/, 'http').replace(/\/agent-hub\/v1$/, '');
+    const namespace = '/agent-hub/v1';
 
-  private async doConnect(): Promise<void> {
+    console.log(`[hub] connecting to ${rawUrl}${namespace}`);
+
+    this.socket = io(`${rawUrl}${namespace}`, {
+      query: { token: this.config.token },
+      extraHeaders: {
+        'x-instance-key': this.config.instanceKey,
+        'x-runtime-version': '0.1.0',
+      },
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: this.config.reconnectMs,
+      reconnectionDelayMax: this.config.maxReconnectMs,
+    });
+
+    this.setupListeners();
+
     return new Promise((resolve, reject) => {
-      const url = `${this.config.hubUrl}?token=${encodeURIComponent(this.config.token)}`;
-      console.log(`[hub] connecting to ${this.config.hubUrl}`);
-
-      const ws = new WebSocket(url, {
-        headers: {
-          'x-instance-key': this.config.instanceKey,
-          'x-runtime-version': '0.1.0',
-        },
-      });
-
-      this.ws = ws;
-
-      const connectTimeout = setTimeout(() => {
-        ws.close();
+      const timeout = setTimeout(() => {
         reject(new Error('Hub connection timeout'));
       }, 15000);
 
-      ws.on('open', () => {
-        clearTimeout(connectTimeout);
+      this.socket!.once('connect', () => {
+        clearTimeout(timeout);
         this.backoffMs = this.config.reconnectMs;
         this.startHeartbeat();
         this.sendRegister();
@@ -111,72 +107,55 @@ export class HubClient extends EventEmitter {
         resolve();
       });
 
-      ws.on('message', (data) => {
-        try {
-          const msg: HubMessage = JSON.parse(data.toString());
-          this.handleMessage(msg);
-        } catch (err) {
-          console.warn('[hub] invalid message', err);
-        }
-      });
-
-      ws.on('error', (err) => {
-        clearTimeout(connectTimeout);
-        console.warn('[hub] error', err.message);
+      this.socket!.once('connect_error', (err) => {
+        clearTimeout(timeout);
+        console.warn('[hub] connect error:', err.message);
         this.emit('error', err);
-        if (ws.readyState !== WebSocket.OPEN) {
-          reject(err);
-        }
-      });
-
-      ws.on('close', (code, reason) => {
-        console.warn(`[hub] closed code=${code} reason=${reason}`);
-        this.cleanup();
-        if (!this.isShuttingDown) {
-          this.scheduleReconnect();
-        }
+        reject(err);
       });
     });
   }
 
-  private handleMessage(msg: HubMessage): void {
-    switch (msg.type) {
-      case 'register_ack':
-        console.log('[hub] registered', msg.payload);
-        this.emit('registered', msg.payload);
-        break;
+  private setupListeners(): void {
+    if (!this.socket) return;
 
-      case 'config_update':
-        this.emit('config_update', msg.payload as ConfigUpdate);
-        break;
+    this.socket.on('disconnect', (reason) => {
+      console.warn(`[hub] disconnected: ${reason}`);
+      this.cleanup();
+    });
 
-      case 'task_offer':
-        this.emit('task_offer', msg.payload as TaskOffer);
-        break;
+    this.socket.on('register_ack', (data: any) => {
+      console.log('[hub] registered', data);
+      this.emit('registered', data);
+    });
 
-      case 'approval_request':
-        this.emit('approval_request', msg.payload as ApprovalRequest);
-        break;
+    this.socket.on('config_update', (data: any) => {
+      this.emit('config_update', data as ConfigUpdate);
+    });
 
-      case 'approval_response':
-        this.emit('approval_response', msg.payload);
-        break;
+    this.socket.on('task_offer', (data: any) => {
+      this.emit('task_offer', data as TaskOffer);
+    });
 
-      case 'tool_result':
-        this.emit('tool_result', msg.payload);
-        break;
+    this.socket.on('approval_request', (data: any) => {
+      this.emit('approval_request', data as ApprovalRequest);
+    });
 
-      case 'heartbeat_ack':
-        // no-op
-        break;
+    this.socket.on('approval_response', (data: any) => {
+      this.emit('approval_response', data);
+    });
 
-      case 'subagent_done':
-        this.emit('subagent_done', msg.payload);
-        break;
+    this.socket.on('tool_result', (data: any) => {
+      this.emit('tool_result', data);
+    });
 
-      default:
-        console.debug('[hub] unhandled message type', msg.type);
-    }
+    this.socket.on('heartbeat_ack', () => {
+      // no-op
+    });
+
+    this.socket.on('subagent_done', (data: any) => {
+      this.emit('subagent_done', data);
+    });
   }
 
   private sendRegister(): void {
@@ -207,28 +186,14 @@ export class HubClient extends EventEmitter {
     }, this.config.heartbeatMs);
   }
 
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
-    const delay = Math.min(this.backoffMs, this.config.maxReconnectMs);
-    console.log(`[hub] reconnecting in ${delay}ms`);
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.backoffMs = Math.min(this.backoffMs * 2, this.config.maxReconnectMs);
-      this.connect().catch((err) => {
-        console.error('[hub] reconnect failed', err.message);
-      });
-    }, delay);
-  }
-
   send(msg: HubMessage): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.socket || !this.socket.connected) {
       console.warn('[hub] cannot send, not connected');
       return;
     }
-    this.ws.send(JSON.stringify(msg));
+    this.socket.emit(msg.type, msg);
   }
 
-  // Convenience methods
   acceptTask(taskId: string): void {
     this.send({ type: 'accept', taskId });
   }
@@ -275,20 +240,15 @@ export class HubClient extends EventEmitter {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
-    this.ws = null;
   }
 
   shutdown(): void {
     this.isShuttingDown = true;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    if (this.ws) {
-      this.ws.close(1000, 'shutdown');
-      this.ws = null;
-    }
     this.cleanup();
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
     this.removeAllListeners();
   }
 }

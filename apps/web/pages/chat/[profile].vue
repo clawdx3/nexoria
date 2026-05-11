@@ -45,8 +45,14 @@
         <div style="display:flex;align-items:center;gap:8px;">
           <div style="display:flex;align-items:center;gap:8px;padding:4px 10px 4px 8px;border:1px solid var(--line);border-radius:9px;background:var(--bg-sunk);">
             <Server :size="13" />
-            <span style="font-size:12px;">OpenClaw</span>
-            <button class="nx-switch on"><span class="nx-switch-thumb" /></button>
+            <select
+              v-model="runtimeMode"
+              style="font-size:12px;background:transparent;border:none;outline:none;color:var(--ink);cursor:pointer;"
+            >
+              <option value="openclaw">OpenClaw</option>
+              <option value="nexoria">Nexoria</option>
+              <option value="power-agent">Power Agent</option>
+            </select>
           </div>
           <button class="nx-icon-btn bordered"><MoreHorizontal :size="15" /></button>
         </div>
@@ -164,6 +170,10 @@
         <div class="text-tiny" style="margin-bottom:10px;">Context</div>
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+            <span style="color:var(--muted);">Runtime</span>
+            <span style="font-weight:500;">{{ runtimeMode === 'power-agent' ? 'Power Agent' : runtimeMode === 'openclaw' ? 'OpenClaw' : 'Nexoria' }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;">
             <span style="color:var(--muted);">Model</span>
             <span style="font-weight:500;font-family:var(--font-mono);">{{ (currentAgent?.model || 'claude-sonnet-4').replace('claude-', '') }}</span>
           </div>
@@ -219,6 +229,11 @@ function agentColor (a: any): string {
 
 const message = ref('')
 const scrollRef = ref<HTMLDivElement>()
+const runtimeMode = ref<'nexoria' | 'openclaw' | 'power-agent'>('openclaw')
+
+watch(currentAgent, (agent) => {
+  if (agent?.runtimeProvider) runtimeMode.value = agent.runtimeProvider
+}, { immediate: true })
 
 const starterPrompts = [
   'What needs my attention today?',
@@ -245,7 +260,7 @@ function sendPrompt (p: string) {
 function sendMessage () {
   const content = message.value.trim()
   if (!content || chatStore.isLoading) return
-  void chatStore.sendMessage(content, currentAgentId.value, 'openclaw')
+  void chatStore.sendMessage(content, currentAgentId.value, runtimeMode.value)
   message.value = ''
 }
 
