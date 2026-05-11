@@ -8,9 +8,9 @@ export class CreateRuntimeJobDto {
   @IsString()
   agentProfileId: string;
 
-  @ApiPropertyOptional({ enum: ['openclaw_task', 'create_file', 'research', 'browser_task'] })
+  @ApiPropertyOptional({ enum: ['openclaw_task', 'create_file', 'research', 'browser_task', 'native_pro_chat', 'native_pro_task'] })
   @IsOptional()
-  @IsEnum(['openclaw_task', 'create_file', 'research', 'browser_task'])
+  @IsEnum(['openclaw_task', 'create_file', 'research', 'browser_task', 'native_pro_chat', 'native_pro_task'])
   type?: RuntimeJobType;
 
   @ApiProperty({ example: { prompt: 'Create a CSV with three lead follow-up tasks.' } })

@@ -93,6 +93,7 @@ services:
       DEFAULT_MODEL_PROVIDER: ${DEFAULT_MODEL_PROVIDER:-ollama}
       DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-gpt-oss:120b}
       NEXORIA_RUNNER_TOKEN: ${NEXORIA_RUNNER_TOKEN:-dev-runner-token-change-me}
+      NEXORIA_PRO_AGENT_TOKEN: ${NEXORIA_PRO_AGENT_TOKEN:-dev-pro-agent-token-change-me}
       NEXORIA_MCP_TOKEN: ${NEXORIA_MCP_TOKEN:-dev-mcp-token-change-me}
       ARTIFACT_STORAGE_DIR: /app/storage/artifacts
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
@@ -431,12 +432,14 @@ services:
     environment:
       NODE_ENV: development
       NEXORIA_API_URL: http://api:3000/api/v1
-      NEXORIA_API_KEY: ${NEXORIA_PRO_AGENT_TOKEN:-dev-pro-agent-token-change-me}
+      NEXORIA_AGENT_TOKEN: ${NEXORIA_PRO_AGENT_TOKEN:-dev-pro-agent-token-change-me}
       NEXORIA_WORKSPACE_ID: ${NEXORIA_PRO_AGENT_WORKSPACE_ID:-00000000-0000-0000-0000-000000000000}
-      NEXORIA_AGENT_PROFILE_ID: ${NEXORIA_PRO_AGENT_PROFILE_ID:-00000000-0000-0000-0000-000000000000}
       LLM_PROVIDER: ${PRO_AGENT_LLM_PROVIDER:-openai}
       LLM_API_KEY: ${PRO_AGENT_LLM_API_KEY}
       LLM_MODEL: ${PRO_AGENT_LLM_MODEL:-gpt-4o}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
     volumes:
       - pro_agent_data:/app/data
     depends_on:
@@ -444,6 +447,13 @@ services:
         condition: service_started
     profiles:
       - pro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 networks:
   default:

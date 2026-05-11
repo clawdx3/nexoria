@@ -68,14 +68,16 @@ export class ManagedRuntimeService {
     private readonly agentLoopService: AgentLoopService,
   ) {}
 
-  async createJob(workspaceId: string, requestedByUserId: string | null, dto: CreateRuntimeJobDto): Promise<any> {
+  async createJob(workspaceId: string, requestedByUserId: string | null, dto: CreateRuntimeJobDto, instanceId?: string): Promise<any> {
     await this.assertAgentAllowed(workspaceId, dto.agentProfileId);
     await this.assertDelegationCapacity(workspaceId, dto.input?.parentChatSessionId);
-    const instance = await this.findReadyInstance(workspaceId);
+    const targetInstance = instanceId
+      ? await this.instances.findOne({ where: { id: instanceId } })
+      : await this.findReadyInstance(workspaceId);
     const job = this.jobs.create({
       workspaceId,
       requestedByUserId,
-      instanceId: instance?.id ?? null,
+      instanceId: targetInstance?.id ?? null,
       agentProfileId: dto.agentProfileId,
       type: dto.type ?? 'openclaw_task',
       status: 'queued',
@@ -88,8 +90,8 @@ export class ManagedRuntimeService {
       agentProfileId: saved.agentProfileId,
       type: saved.type,
     });
-    if (instance) {
-      await this.runnerEvents.publish(instance.instanceKey, {
+    if (targetInstance) {
+      await this.runnerEvents.publish(targetInstance.instanceKey, {
         type: 'job',
         data: { ...this.jobDto(saved), allowedAgentIds: await this.allowedAgentIds(workspaceId) },
       });
@@ -243,7 +245,31 @@ export class ManagedRuntimeService {
       return { message: this.chatMessageDto(message), session: this.chatSessionDto(session) };
     }
 
-    // OpenClaw path (default / native_pro not yet wired)
+    if (profile?.runtimeMode === 'native_pro') {
+      const readyInstance = await this.findReadyInstance(workspaceId, 'pro-agent');
+      if (!readyInstance) {
+        const system = await this.saveChatMessage(workspaceId, sessionId, 'system', 'No Pro Agent instance is registered for this workspace. Start the pro-agent container or set the agent runtimeMode to native_saas / openclaw.', 'error', {});
+        this.emitChat(sessionId, { type: 'error', content: system.content, runId: sessionId, message: this.chatMessageDto(system) });
+        return { message: this.chatMessageDto(system), session: this.chatSessionDto(session) };
+      }
+      this.emitChat(sessionId, { type: 'user_message', message: this.chatMessageDto(message) });
+      this.emitChat(sessionId, { type: 'status', status: 'running', content: 'Routing to Pro Agent...', runId: sessionId });
+      const job = await this.createJob(workspaceId, userId, {
+        agentProfileId: session.agentProfileId,
+        type: 'native_pro_chat',
+        input: {
+          chatSessionId: session.id,
+          userMessageId: message.id,
+          content: dto.content,
+          attachmentIds,
+          recentMessages: await this.recentChatTranscript(workspaceId, sessionId),
+          parentChatSessionId: session.id,
+        },
+      }, readyInstance.id);
+      return { message: this.chatMessageDto(message), session: this.chatSessionDto(session), jobId: job.id };
+    }
+
+    // OpenClaw path (default)
     const isFirstMessage = !session.openclawSessionKey;
     const allowedAgentIds = await this.allowedAgentIds(workspaceId);
     const context = isFirstMessage
@@ -358,7 +384,9 @@ export class ManagedRuntimeService {
     const job = await this.jobs.findOne({
       where: [
         { status: 'queued', instanceId: instance.id },
-        { status: 'queued', instanceId: IsNull() },
+        ...(instance.mode === 'pro-agent'
+          ? [{ status: 'queued' as const, instanceId: IsNull() }]
+          : [{ status: 'queued' as const, instanceId: IsNull(), type: 'openclaw_task' as any }]),
       ],
       order: { createdAt: 'ASC' },
     });
@@ -385,8 +413,73 @@ export class ManagedRuntimeService {
     return this.eventDto(event);
   }
 
+  async completeNativeProChatJob(
+    instanceKey: string,
+    jobId: string,
+    dto: CompleteRuntimeJobDto,
+  ): Promise<any> {
+    const { instance, job } = await this.runnerJobContext(instanceKey, jobId);
+    if (job.type !== 'native_pro_chat') {
+      throw new BadRequestException('Job type mismatch: expected native_pro_chat');
+    }
+
+    const chatSessionId = job.input?.chatSessionId as string;
+    const workspaceId = job.workspaceId;
+
+    await this.jobs.update(jobId, {
+      status: dto.status,
+      result: dto.result ?? null,
+      error: dto.error ?? null,
+      completedAt: new Date(),
+    });
+
+    await this.addEvent(workspaceId, jobId, instance.id,
+      `native_pro_${dto.status}`,
+      dto.status === 'completed' ? 'info' : 'error',
+      dto.error ?? `Native pro job ${dto.status}.`,
+      dto.result ?? {},
+    );
+
+    if (dto.status === 'completed' && typeof dto.result?.output === 'string' && chatSessionId) {
+      const signedOutput = `[Pro Agent]\n${dto.result.output}`;
+      const assistant = await this.saveChatMessage(workspaceId, chatSessionId, 'assistant', signedOutput, 'completed', {
+        source: 'native_pro',
+        runtimeJobId: jobId,
+      });
+      this.emitChat(chatSessionId, {
+        type: 'assistant_final',
+        content: dto.result.output,
+        runId: jobId,
+        message: this.chatMessageDto(assistant),
+      });
+      await this.chatSessions.update(chatSessionId, { status: 'active', lastMessageAt: new Date() });
+
+      const session = await this.chatSessions.findOne({ where: { id: chatSessionId } });
+      if (session?.userId) {
+        this.reflectionDebouncer.schedule(session.workspaceId, session.id, session.userId);
+      }
+    } else if (dto.error && chatSessionId) {
+      const system = await this.saveChatMessage(workspaceId, chatSessionId, 'system', dto.error, 'error', {
+        source: 'native_pro',
+        runtimeJobId: jobId,
+      });
+      this.emitChat(chatSessionId, {
+        type: 'error',
+        content: dto.error,
+        runId: jobId,
+        message: this.chatMessageDto(system),
+      });
+      await this.chatSessions.update(chatSessionId, { status: 'error' });
+    }
+
+    return this.jobDto(await this.jobs.findOneOrFail({ where: { id: jobId } }));
+  }
+
   async completeJob(instanceKey: string, jobId: string, dto: CompleteRuntimeJobDto): Promise<any> {
     const { instance, job } = await this.runnerJobContext(instanceKey, jobId);
+    if (job.type === 'native_pro_chat') {
+      return this.completeNativeProChatJob(instanceKey, jobId, dto);
+    }
     await this.jobs.update(job.id, {
       status: dto.status,
       result: dto.result ?? null,
@@ -625,11 +718,13 @@ export class ManagedRuntimeService {
     return ['orchestrator', ...profiles.map((profile) => profile.id)];
   }
 
-  private async findReadyInstance(workspaceId: string): Promise<RuntimeInstance | null> {
+  private async findReadyInstance(workspaceId: string, mode?: string): Promise<RuntimeInstance | null> {
+    const where: any = { status: 'ready' };
+    if (mode) where.mode = mode;
     return this.instances.findOne({
       where: [
-        { workspaceId, status: 'ready' },
-        { workspaceId: IsNull(), status: 'ready' },
+        { ...where, workspaceId },
+        { ...where, workspaceId: IsNull() },
       ],
       order: { updatedAt: 'DESC' },
     });

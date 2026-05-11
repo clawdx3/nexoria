@@ -62,6 +62,13 @@ export class AgentProfile {
   @Column({ type: 'jsonb', default: {} })
   remoteConfig: Record<string, any>;
 
+  @Column({ type: 'jsonb', nullable: true })
+  memoryConfig: {
+    mode: 'db' | 'local' | 'hybrid';
+    localMemoryEnabled?: boolean;
+    localMemoryMaxChars?: { memory: number; user: number };
+  } | null;
+
   @Column({ default: false })
   isBuiltIn: boolean;
 

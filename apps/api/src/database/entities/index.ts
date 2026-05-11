@@ -23,4 +23,3 @@ export * from './runtime-chat-message.entity';
 export * from './runtime-chat-command.entity';
 export * from './artifact.entity';
 export * from './attachment.entity';
-export * from './agent-command.entity';

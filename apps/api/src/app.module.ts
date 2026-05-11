@@ -20,8 +20,6 @@ import { ManagedRuntimeModule } from './modules/managed-runtime/managed-runtime.
 import { McpModule } from './modules/mcp/mcp.module';
 import { SocialPostDraftsModule } from './modules/social-post-drafts/social-post-drafts.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
-import { RemoteAgentModule } from './modules/remote-agent/remote-agent.module';
-
 import * as entities from './database/entities';
 
 @Module({
@@ -62,7 +60,6 @@ import * as entities from './database/entities';
     AttachmentsModule,
     McpModule,
     SocialPostDraftsModule,
-    RemoteAgentModule,
   ],
 })
 export class AppModule {}
