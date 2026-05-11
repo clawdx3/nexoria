@@ -64,7 +64,22 @@ export class TasksController {
 
   @Post()
   @ApiResponse({ status: 201, type: TaskResponseDto })
-  create(@Param('workspaceId') wsId: string, @Body() dto: CreateTaskDto): Promise<TaskResponseDto> {
+  async create(@Param('workspaceId') wsId: string, @Body() dto: CreateTaskDto, @Request() req: AuthenticatedRequest): Promise<TaskResponseDto> {
+    if (dto.source === 'agent') {
+      const task = await this.service.create(wsId, dto);
+      // Route to power agent runtime
+      await this.runtime.createJob(wsId, req.user.id, {
+        agentProfileId: dto.agentProfileId ?? 'orchestrator',
+        type: 'openclaw_task',
+        input: {
+          taskId: task.id,
+          title: task.title,
+          description: task.description,
+          prompt: `Task created: ${task.title}. ${task.description ?? ''}`,
+        },
+      });
+      return task;
+    }
     return this.service.create(wsId, dto);
   }
 

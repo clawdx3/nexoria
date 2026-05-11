@@ -27,7 +27,22 @@ describe('AgentExecutorService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AgentExecutorService,
-        ToolRegistryService,
+        {
+          provide: ToolRegistryService,
+          useValue: {
+            get: jest.fn((name) => {
+              if (name === 'create_internal_task') {
+                return {
+                  name: 'create_internal_task',
+                  schema: { safeParse: () => ({ success: true }) },
+                  execute: jest.fn().mockResolvedValue({ success: true }),
+                };
+              }
+              return undefined;
+            }),
+            listForContext: jest.fn().mockReturnValue([]),
+          },
+        },
         { provide: LlmProviderFactory, useValue: mockLlm },
         { provide: MemoryContextBuilder, useValue: mockMemoryBuilder },
         { provide: ReflectionService, useValue: mockReflection },
@@ -101,7 +116,7 @@ describe('AgentExecutorService', () => {
         systemPrompt: 'You are helpful.',
         modelProvider: 'openai',
         modelName: 'gpt-4o',
-        enabledTools: [],
+        enabledTools: ['create_internal_task'],
         role: 'specialist',
       },
     };

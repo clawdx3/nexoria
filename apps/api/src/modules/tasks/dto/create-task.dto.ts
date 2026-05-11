@@ -49,6 +49,16 @@ export class CreateTaskDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, any>;
+
+  @ApiPropertyOptional({ enum: ['user', 'agent'] })
+  @IsOptional()
+  @IsEnum(['user', 'agent'])
+  source?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  agentProfileId?: string;
 }
 
 export class UpdateTaskDto {

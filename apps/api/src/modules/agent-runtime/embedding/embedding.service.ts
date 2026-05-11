@@ -9,6 +9,11 @@ export class EmbeddingService implements OnModuleInit {
   private ready = false;
 
   async onModuleInit(): Promise<void> {
+    // Skip heavy model loading in test environments to avoid hangs / OOM
+    if (process.env.NODE_ENV === 'test') {
+      this.logger.log('Test environment detected; skipping embedding model load');
+      return;
+    }
     try {
       this.embedder = await pipeline('feature-extraction' as any, this.modelName, {
         quantized: true,

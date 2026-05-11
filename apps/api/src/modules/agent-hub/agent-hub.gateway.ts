@@ -84,7 +84,8 @@ export class AgentHubGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   @SubscribeMessage('approval_request')
   handleApprovalRequest(@MessageBody() data: any, @ConnectedSocket() client: Socket): void {
-    this.service.createApproval(data);
+    const approval = this.service.createApproval(data);
+    this.server.emit('approval_request', approval);
   }
 
   @SubscribeMessage('config_ack')

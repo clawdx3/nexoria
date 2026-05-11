@@ -19,7 +19,9 @@ import { BrowserModule } from './modules/browser/browser.module';
 import { ManagedRuntimeModule } from './modules/managed-runtime/managed-runtime.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { SocialPostDraftsModule } from './modules/social-post-drafts/social-post-drafts.module';
+import { SkillsModule } from './modules/skills/skills.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
+import { AgentHubModule } from './modules/agent-hub/agent-hub.module';
 
 import * as entities from './database/entities';
 
@@ -60,7 +62,9 @@ import * as entities from './database/entities';
     ManagedRuntimeModule,
     AttachmentsModule,
     McpModule,
+    SkillsModule,
     SocialPostDraftsModule,
+    AgentHubModule,
   ],
 })
 export class AppModule {}

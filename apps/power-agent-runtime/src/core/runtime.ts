@@ -137,6 +137,7 @@ export class AgentRuntime extends EventEmitter {
         role,
         taskId: offer.taskId,
         context,
+        config: this.config!,
         signal,
         onProgress: (data) => {
           this.hub.sendSubagentProgress(data.subagentId, offer.taskId, data);

@@ -6,17 +6,30 @@ describe('ToolRegistryService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ToolRegistryService],
+      providers: [
+        ToolRegistryService,
+        {
+          provide: require('../../tasks/tasks.service').TasksService,
+          useValue: {
+            create: jest.fn().mockResolvedValue({ id: 'task-1' }),
+            findByWorkspace: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: require('../../browser/browser.service').BrowserService,
+          useValue: {},
+        },
+      ],
     }).compile();
     service = module.get<ToolRegistryService>(ToolRegistryService);
   });
 
   it('should list built-in tools', () => {
-    const ctx: any = { agentProfile: { enabledTools: ['delegate_task', 'search_products'] } };
+    const ctx: any = { agentProfile: { enabledTools: ['delegate_task', 'create_internal_task'] } };
     const tools = service.listForContext(ctx);
     expect(tools.length).toBe(2);
     expect(tools.map((t) => t.name)).toContain('delegate_task');
-    expect(tools.map((t) => t.name)).toContain('search_products');
+    expect(tools.map((t) => t.name)).toContain('create_internal_task');
   });
 
   it('should return undefined for unknown tool', () => {

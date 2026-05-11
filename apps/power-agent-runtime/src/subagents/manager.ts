@@ -2,11 +2,13 @@ import { EventEmitter } from 'events';
 import * as cp from 'child_process';
 import * as path from 'path';
 import { AgentContext } from '../core/runtime';
+import { AgentConfig } from '../config/types';
 
 export interface SubagentConfig {
   role: string;
   taskId: string;
   context: AgentContext;
+  config: AgentConfig;
   signal: AbortSignal;
   onProgress?: (data: Record<string, any>) => void;
 }
@@ -84,13 +86,14 @@ export class SubagentManager extends EventEmitter {
         }
       });
 
-      // Send initial task
+      // Send initial task with config
       child.send({
         type: 'init',
         role: config.role,
         taskId: config.taskId,
         context: config.context,
         payload: config.context.metadata,
+        config: config.config,
       });
     });
   }

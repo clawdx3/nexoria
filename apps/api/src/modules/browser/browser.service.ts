@@ -32,8 +32,8 @@ export class BrowserService {
   private readonly accessKey: string;
 
   constructor(private readonly config: ConfigService) {
-    this.baseUrl = this.config.getOrThrow<string>('CAMOFOX_URL');
-    this.accessKey = this.config.getOrThrow<string>('CAMOFOX_ACCESS_KEY');
+    this.baseUrl = this.config.get<string>('CAMOFOX_URL') ?? 'http://localhost:3001';
+    this.accessKey = this.config.get<string>('CAMOFOX_ACCESS_KEY') ?? '';
   }
 
   private async fetch(path: string, opts: RequestInit = {}): Promise<any> {
