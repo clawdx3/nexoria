@@ -49,6 +49,7 @@ export class ProAgentRunnerController {
   }
 
   @Post('instances/:instanceKey/heartbeat')
+  @UseGuards(ProAgentHttpGuard)
   async heartbeat(@Param('instanceKey') instanceKey: string, @Body() dto: { status?: string; metadata?: Record<string, any> }): Promise<any> {
     const instance = await this.instances.findOne({ where: { instanceKey } });
     if (!instance) throw new NotFoundException('Runtime instance not found');

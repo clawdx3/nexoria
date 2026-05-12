@@ -1,4 +1,4 @@
-import { AgentLoop as AgentLoopCore, AgentToolRegistry, CompositeMemoryManager, AgentProfile, ToolContext } from '@nexoria/agent-core';
+import { AgentLoop as AgentLoopCore, AgentToolRegistry, CompositeMemoryManager, AgentProfile, ToolContext, MemoryProvider } from '@nexoria/agent-core';
 import { Config } from './config';
 import { NexoriaMemoryProvider } from './memory';
 
@@ -10,13 +10,14 @@ export class ProAgentLoop {
   constructor(
     private readonly config: Config,
     private readonly llm: any,
+    memoryProvider?: MemoryProvider,
   ) {
-    const memoryProvider = new NexoriaMemoryProvider(
+    const provider = memoryProvider ?? new NexoriaMemoryProvider(
       config.nexoriaApiUrl,
       config.agentToken,
       config.workspaceId,
     );
-    this.memoryManager = new CompositeMemoryManager(memoryProvider);
+    this.memoryManager = new CompositeMemoryManager(provider);
   }
 
   registerTool(tool: any): void {
@@ -26,15 +27,20 @@ export class ProAgentLoop {
   async run(
     profile: any,
     userMessage: string,
-    existingMessages?: Array<{ role: string; content: string }>,
+    opts?: {
+      existingMessages?: Array<{ role: string; content: string }>;
+      userId?: string;
+      sessionId?: string;
+    },
     emit?: (chunk: any) => void,
   ): Promise<{ success: boolean; finalOutput: string | null; error?: string }> {
     const ctx: ToolContext = {
       agentProfile: profile,
       workspaceId: this.config.workspaceId,
-      triggeredByUserId: 'pro-agent',
+      triggeredByUserId: opts?.userId ?? 'pro-agent',
       userRole: 'system',
       autonomyLevel: 3,
+      sessionId: opts?.sessionId,
     };
 
     const result = await this.loop.run(
@@ -56,7 +62,7 @@ export class ProAgentLoop {
         emit,
       },
       userMessage,
-      { existingMessages },
+      { existingMessages: opts?.existingMessages },
     );
 
     return {

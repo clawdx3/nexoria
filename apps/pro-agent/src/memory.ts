@@ -9,7 +9,14 @@ export class NexoriaMemoryProvider implements MemoryProvider {
 
   async loadTier(ctx: ToolContext, tier: string, limit: number): Promise<string[]> {
     try {
-      const url = `${this.apiUrl}/workspaces/${this.workspaceId}/memory?tier=${tier}&limit=${limit}`;
+      const params = new URLSearchParams();
+      params.set('tier', tier);
+      params.set('limit', String(limit));
+      params.set('userId', ctx.triggeredByUserId);
+      if (tier === 'session' && ctx.sessionId) {
+        params.set('sessionId', ctx.sessionId);
+      }
+      const url = `${this.apiUrl}/workspaces/${this.workspaceId}/memory?${params.toString()}`;
       const res = await fetch(url, {
         headers: this.headers(),
         signal: AbortSignal.timeout(5000),
@@ -46,12 +53,16 @@ export class NexoriaMemoryProvider implements MemoryProvider {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({
+          userId: ctx.triggeredByUserId,
           content,
           tier,
           type,
           confidence: confidence ?? 0.5,
-          source: 'pro-agent',
-          agentProfileId: ctx.agentProfile.id,
+          metadata: {
+            source: 'pro-agent',
+            agentProfileId: ctx.agentProfile.id,
+            sessionId: ctx.sessionId,
+          },
         }),
         signal: AbortSignal.timeout(5000),
       });

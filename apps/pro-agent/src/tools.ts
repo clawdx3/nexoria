@@ -553,3 +553,70 @@ export function registerDelegationTool(agent: ProAgentLoop, config: Config, spaw
     },
   });
 }
+
+export function registerMemoryTools(agent: ProAgentLoop, config: Config): void {
+  agent.registerTool({
+    name: 'nudge_memory',
+    description: 'Persist important knowledge so the agent remembers it across conversations. Use after learning something important about the user, completing a significant task, or when the user asks to remember something.',
+    schema: z.object({
+      content: z.string().describe('Knowledge to persist'),
+      type: z.enum(['fact', 'preference', 'avoidance', 'pattern']).describe('Type of memory'),
+      tier: z.enum(['daily', 'long_term']).optional().describe('Target tier'),
+    }),
+    riskLevel: 1,
+    execute: async (args: { content: string; type: string; tier?: string }, ctx: any) => {
+      try {
+        const res = await fetch(`${config.nexoriaApiUrl}/workspaces/${config.workspaceId}/memory`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.agentToken}`,
+          },
+          body: JSON.stringify({
+            userId: ctx.triggeredByUserId,
+            sessionId: ctx.sessionId,
+            content: args.content,
+            tier: args.tier ?? 'long_term',
+            type: args.type,
+            confidence: 0.95,
+            metadata: { source: 'nudge_memory', agentProfileId: 'pro-agent' },
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) return { success: false, error: `API ${res.status}` };
+        const data = await res.json() as any;
+        return { success: true, memoryId: data.id, content: args.content };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+  });
+
+  agent.registerTool({
+    name: 'search_memory',
+    description: 'Search the agent\'s memory for facts, preferences, or past insights. Use this before answering questions about the user or workspace history.',
+    schema: z.object({
+      query: z.string().describe('Search query'),
+      limit: z.number().optional().describe('Max results (default: 5)'),
+    }),
+    riskLevel: 1,
+    execute: async (args: { query: string; limit?: number }) => {
+      try {
+        const res = await fetch(`${config.nexoriaApiUrl}/workspaces/${config.workspaceId}/memory/search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.agentToken}`,
+          },
+          body: JSON.stringify({ query: args.query, limit: args.limit ?? 5 }),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) return { success: false, error: `API ${res.status}` };
+        const data = await res.json() as any;
+        return { success: true, memories: data };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+  });
+}

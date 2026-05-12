@@ -198,7 +198,13 @@ definePageMeta({ middleware: 'auth' })
 const { agents: rawAgents, fetchAgents } = useAgent()
 const chatStore = useChatStore()
 
-onMounted(() => { void fetchAgents() })
+onMounted(async () => {
+  await fetchAgents()
+  const sessions = await chatStore.listSessions()
+  if (sessions.length) {
+    await chatStore.loadSession(sessions[0].id)
+  }
+})
 
 const orchestrator = computed(() => rawAgents.value.find((a: any) => a.role === 'orchestrator') || rawAgents.value[0])
 

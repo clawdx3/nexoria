@@ -285,6 +285,31 @@ export const useChatStore = defineStore('chat', () => {
     runtimeMode.value = 'native_saas'
   }
 
+  async function loadSession (sessionId: string): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+
+    try {
+      const msgs = await useApi<any[]>(`/workspaces/${workspaceId}/runtime/chat/sessions/${sessionId}/messages`)
+      messages.value = (msgs || []).map(m => toChatMessage(m))
+      currentSessionId.value = sessionId
+    } catch {
+      messages.value = []
+    }
+  }
+
+  async function listSessions (): Promise<any[]> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return []
+
+    try {
+      const sessions = await useApi<any[]>(`/workspaces/${workspaceId}/runtime/chat/sessions`)
+      return sessions || []
+    } catch {
+      return []
+    }
+  }
+
   function addSystemMessage (content: string): void {
     messages.value.push({
       id: crypto.randomUUID(),
@@ -303,6 +328,8 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     clearMessages,
     addSystemMessage,
+    loadSession,
+    listSessions,
     connectSocket,
     disconnectSocket,
   }

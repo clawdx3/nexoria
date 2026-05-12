@@ -43,6 +43,12 @@ export class ManagedRuntimeController {
     return this.service.createJob(workspaceId, req.user.id, dto);
   }
 
+  @Get('chat/sessions')
+  @ApiResponse({ status: 200 })
+  listChatSessions(@Param('workspaceId') workspaceId: string, @Request() req: AuthenticatedRequest): Promise<any[]> {
+    return this.service.listChatSessions(workspaceId, req.user.id);
+  }
+
   @Post('chat/sessions')
   @ApiResponse({ status: 201 })
   createChatSession(@Param('workspaceId') workspaceId: string, @Body() dto: CreateRuntimeChatSessionDto, @Request() req: AuthenticatedRequest): Promise<any> {

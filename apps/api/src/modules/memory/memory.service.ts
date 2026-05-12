@@ -33,16 +33,20 @@ export class MemoryService {
     return this.toDto(e);
   }
 
-  async findByUser(userId: string, workspaceId: string): Promise<MemoryResponseDto[]> {
+  async findByUser(userId: string, workspaceId: string, opts?: { tier?: string; sessionId?: string; limit?: number }): Promise<MemoryResponseDto[]> {
+    const where: any = { userId, workspaceId };
+    if (opts?.tier) where.tier = opts.tier;
+    if (opts?.sessionId) where.sessionId = opts.sessionId;
     const items = await this.repo.find({
-      where: { userId, workspaceId },
-      order: { createdAt: 'DESC' },
+      where,
+      order: { confidence: 'DESC', createdAt: 'DESC' },
+      take: opts?.limit,
     });
     return items.map((i) => this.toDto(i));
   }
 
-  async findByWorkspaceUser(workspaceId: string, userId: string): Promise<MemoryResponseDto[]> {
-    return this.findByUser(userId, workspaceId);
+  async findByWorkspaceUser(workspaceId: string, userId: string, opts?: { tier?: string; sessionId?: string; limit?: number }): Promise<MemoryResponseDto[]> {
+    return this.findByUser(userId, workspaceId, opts);
   }
 
   async searchByText(workspaceId: string, query: string, limit = 10): Promise<MemoryResponseDto[]> {

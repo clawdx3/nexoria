@@ -3,6 +3,7 @@ import {
   AgentLoop as AgentLoopCore,
   AgentToolRegistry,
   CompositeMemoryManager,
+  StreamingChunk,
 } from '@nexoria/agent-core';
 import { AgentContext } from '../../../shared/interfaces/agent.interfaces';
 import { MemoryContextBuilder } from '../memory-context/memory-context.builder';
@@ -24,7 +25,8 @@ export class AgentLoopService {
     ctx: AgentContext,
     userMessage: string,
     emit?: (event: any) => void,
-  ): Promise<{ success: boolean; finalOutput: string | null; error?: string }> {
+    existingMessages?: Array<{ role: string; content: string }>,
+  ): Promise<{ success: boolean; finalOutput: string | null; error?: string; interruptedByApprovalId?: string }> {
     try {
       const registry = new AgentToolRegistry();
       const available = this.toolRegistry.listForContext(ctx).filter((t) => t.riskLevel <= 2);
@@ -64,14 +66,18 @@ export class AgentLoopService {
           maxTokens: (ctx.agentProfile.modelConfig as any)?.maxTokens ?? 2048,
           temperature: (ctx.agentProfile.modelConfig as any)?.temperature ?? 0.7,
           emit,
+          enableConcurrency: true,
+          enableCompaction: true,
         },
         userMessage,
+        existingMessages ? { existingMessages } : undefined,
       );
 
       return {
         success: result.success,
         finalOutput: result.finalOutput,
         error: result.error,
+        interruptedByApprovalId: (result as any).interruptedByApprovalId,
       };
     } catch (err: any) {
       this.logger.error(`AgentLoopService failed: ${err.message}`);

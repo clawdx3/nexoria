@@ -3,9 +3,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export class CreateMemoryDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 
   @ApiProperty({ enum: ['profile', 'session', 'daily', 'long_term'] })
   @IsEnum(['profile', 'session', 'daily', 'long_term'])

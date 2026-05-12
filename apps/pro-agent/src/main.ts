@@ -2,9 +2,10 @@ import { Config } from './config';
 import { WsProAgentApiClient } from './api-client';
 import { ProAgentLoop } from './loop';
 import { resolveLlmAdapter } from './llm';
-import { registerDangerousTools, registerDelegationTool } from './tools';
+import { registerDangerousTools, registerDelegationTool, registerMemoryTools } from './tools';
 import { SubagentSpawner } from './subagents';
 import { loadOrCreateKeys, signMessage, getPublicKeyBase64 } from './keys/keys';
+import { NexoriaMemoryProvider } from './memory';
 import * as http from 'node:http';
 import * as nacl from 'tweetnacl';
 
@@ -30,10 +31,11 @@ const llm = resolveLlmAdapter({
   defaultAutonomyLevel: 3,
 });
 
-const agent = new ProAgentLoop(config, llm);
+const memoryProvider = new NexoriaMemoryProvider(config.nexoriaApiUrl, config.agentToken, config.workspaceId);
+const agent = new ProAgentLoop(config, llm, memoryProvider);
 registerDangerousTools(agent, config);
+registerMemoryTools(agent, config);
 
-const memoryProvider = new (require('./memory').NexoriaMemoryProvider)(config.nexoriaApiUrl, config.agentToken, config.workspaceId);
 const spawner = new SubagentSpawner(llm, agent.registry, memoryProvider);
 registerDelegationTool(agent, config, spawner, api);
 
@@ -121,20 +123,37 @@ async function main() {
 
 async function runJob(job: any) {
   const input = job.input ?? {};
+
+  const registeredTools = agent.registry.listAll();
+  const enabledToolNames = registeredTools.map((t) => t.name);
+
+  // Build a proper system prompt that includes memory instructions
+  const systemPrompt = [
+    'You are a powerful AI assistant running in a dedicated container with full filesystem, shell, and code execution capabilities.',
+    'You have persistent memory via `search_memory` (recall) and `nudge_memory` (store).',
+    'Always use `search_memory` before answering questions about the user or workspace history.',
+    'After learning something important about the user, use `nudge_memory` to persist it for future conversations.',
+    'When multiple tools are needed, you can call them in parallel by outputting multiple JSON blocks.',
+  ].join(' ');
+
   const profile: any = {
     id: config.workspaceId,
     name: 'Pro Agent',
-    systemPrompt: '',
+    systemPrompt,
     modelProvider: config.llmProvider as any,
     modelName: config.llmModel,
     modelConfig: { apiKey: config.llmApiKey },
-    enabledTools: [],
+    enabledTools: enabledToolNames,
     role: 'specialist',
     runtimeMode: 'native_pro',
     defaultAutonomyLevel: 3,
   };
 
-  const result = await agent.run(profile, input.content || '', undefined, (chunk) => {
+  const result = await agent.run(profile, input.content || '', {
+    existingMessages: input.recentMessages,
+    userId: input.userId,
+    sessionId: input.chatSessionId,
+  }, (chunk) => {
     if (job.type === 'native_pro_chat' && input.chatSessionId) {
       if (chunk.type === 'token') {
         api.emitChatChunk(input.chatSessionId, job.id, chunk.content || '');

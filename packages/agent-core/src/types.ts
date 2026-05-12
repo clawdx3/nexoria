@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ContextEngine } from './context-engine';
 
 export type ModelProvider = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'custom';
 export type AgentRole = 'orchestrator' | 'specialist';
@@ -25,6 +26,8 @@ export interface ToolContext {
   userRole: string;
   sessionId?: string;
   autonomyLevel: number;
+  stateStore?: FileStateStore;
+  scratchpad?: Record<string, any>;
 }
 
 export interface AgentTool {
@@ -32,7 +35,31 @@ export interface AgentTool {
   description: string;
   schema: z.ZodSchema<any>;
   riskLevel: number; // 1 = safe, 2 = moderate, 3 = dangerous
+  exclusive?: boolean; // if true, must run alone (e.g. ask_user)
   execute: (args: any, ctx: ToolContext) => Promise<any>;
+}
+
+export class AskUserInterrupt extends Error {
+  public readonly approvalId: string;
+  public readonly _tag = 'AskUserInterrupt' as const;
+  constructor(approvalId: string, message: string) {
+    super(message);
+    this.approvalId = approvalId;
+    this.name = 'AskUserInterrupt';
+  }
+}
+
+export interface FileReadEntry {
+  path: string;
+  mtime: number;
+  hash: string;
+}
+
+export interface FileStateStore {
+  get(path: string): FileReadEntry | undefined;
+  set(path: string, entry: FileReadEntry): void;
+  has(path: string): boolean;
+  clear(): void;
 }
 
 export interface AgentStep {
@@ -51,6 +78,7 @@ export interface AgentExecutorResult {
   error?: string;
   tokensUsed: number;
   durationMs: number;
+  interruptedByApprovalId?: string;
 }
 
 export interface MemoryTierResult {
@@ -91,6 +119,10 @@ export interface AgentConfig {
   temperature?: number;
   approvalGate?: (tool: AgentTool, args: any) => Promise<boolean>;
   emit?: (chunk: StreamingChunk) => void;
+  stateStore?: FileStateStore;
+  enableConcurrency?: boolean;
+  enableCompaction?: boolean;
+  contextEngine?: ContextEngine;
 }
 
 export interface ToolRegistry {

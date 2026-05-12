@@ -20,7 +20,7 @@ export function resolveLlmAdapter(profile: AgentProfile) {
     case 'ollama':
       provider = createOpenAI({
         apiKey: modelConfig?.apiKey || process.env.OLLAMA_API_KEY || 'ollama',
-        baseURL: modelConfig?.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+        baseURL: modelConfig?.baseUrl || process.env.OLLAMA_BASE_URL || 'https://ollama.com/v1',
       });
       break;
     default:

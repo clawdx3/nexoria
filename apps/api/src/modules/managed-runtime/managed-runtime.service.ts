@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { OnEvent } from '@nestjs/event-emitter';
 import { IsNull, Repository } from 'typeorm';
 import * as path from 'node:path';
 import { Observable, Subject } from 'rxjs';
@@ -135,6 +136,15 @@ export class ManagedRuntimeService {
     return this.chatSessionDto(session);
   }
 
+  async listChatSessions(workspaceId: string, userId: string): Promise<any[]> {
+    const sessions = await this.chatSessions.find({
+      where: { workspaceId, userId },
+      order: { lastMessageAt: 'DESC' },
+      take: 50,
+    });
+    return sessions.map(s => this.chatSessionDto(s));
+  }
+
   async getChatSession(workspaceId: string, sessionId: string): Promise<any> {
     const session = await this.chatSessions.findOne({ where: { id: sessionId, workspaceId } });
     if (!session) throw new NotFoundException('Runtime chat session not found');
@@ -188,6 +198,9 @@ export class ManagedRuntimeService {
 
       this.emitChat(workspaceId, sessionId, { type: 'user_message', message: this.chatMessageDto(message) });
 
+      const recentMessages = await this.recentChatTranscript(workspaceId, sessionId);
+      const existingMessages = recentMessages.map(m => ({ role: m.role, content: m.content }));
+
       this.agentLoopService.run(agentCtx, dto.content, (chunk) => {
         if (chunk.type === 'token') {
           this.emitChat(workspaceId, sessionId, { type: 'assistant_delta', content: chunk.content ?? '', runId: sessionId });
@@ -200,7 +213,7 @@ export class ManagedRuntimeService {
         } else if (chunk.type === 'error') {
           this.emitChat(workspaceId, sessionId, { type: 'error', content: chunk.error, runId: sessionId });
         }
-      }).then(async (result) => {
+      }, existingMessages).then(async (result) => {
         if (result.success && result.finalOutput) {
           const assistant = await this.saveChatMessage(workspaceId, sessionId, 'assistant', result.finalOutput, 'completed', {
             runId: sessionId,
@@ -211,6 +224,14 @@ export class ManagedRuntimeService {
           if (session.userId) {
             this.reflectionDebouncer.schedule(session.workspaceId, session.id, session.userId);
           }
+        } else if ((result as any).interruptedByApprovalId) {
+          const approvalId = (result as any).interruptedByApprovalId;
+          const pendingMsg = await this.saveChatMessage(workspaceId, sessionId, 'system', result.error || 'Waiting for user approval...', 'pending', {
+            runId: sessionId,
+            approvalId,
+            source: 'native_saas',
+          });
+          this.emitChat(workspaceId, sessionId, { type: 'status', status: 'pending', content: result.error || 'Waiting for user approval...', runId: sessionId, approvalId, message: this.chatMessageDto(pendingMsg) });
         } else {
           const errMsg = result.error || 'Agent loop failed';
           const system = await this.saveChatMessage(workspaceId, sessionId, 'system', errMsg, 'error', { runId: sessionId, source: 'native_saas' });
@@ -238,6 +259,7 @@ export class ManagedRuntimeService {
         input: {
           chatSessionId: session.id,
           userMessageId: message.id,
+          userId,
           content: dto.content,
           attachmentIds,
           recentMessages: await this.recentChatTranscript(workspaceId, sessionId),
@@ -810,5 +832,109 @@ export class ManagedRuntimeService {
       createdAt: message.createdAt,
       updatedAt: message.updatedAt,
     };
+  }
+
+  @OnEvent('approval.decided')
+  async handleApprovalDecided(event: { approvalId: string; workspaceId: string; status: string; outcome: string; sessionId?: string; agentProfileId?: string }) {
+    if (!event.sessionId) return;
+
+    const pendingMessages = await this.chatMessages.find({
+      where: {
+        workspaceId: event.workspaceId,
+        sessionId: event.sessionId,
+        status: 'pending' as any,
+      },
+      order: { createdAt: 'DESC' },
+      take: 1,
+    });
+
+    const pendingMsg = pendingMessages[0];
+    if (!pendingMsg) return;
+
+    if (event.outcome === 'approve') {
+      await this.chatMessages.update(pendingMsg.id, { status: 'completed' as any });
+      this.emitChat(event.workspaceId, event.sessionId, {
+        type: 'status',
+        status: 'approved',
+        content: 'Approval granted. Resuming...',
+        runId: event.sessionId,
+        approvalId: event.approvalId,
+      });
+
+      const session = await this.chatSessions.findOne({ where: { id: event.sessionId } }).catch(() => null);
+      if (!session) return;
+
+      const profile = await this.agentProfiles.findOne(session.agentProfileId).catch(() => null);
+      if (!profile) return;
+
+      const recentMessages = await this.recentChatTranscript(event.workspaceId, event.sessionId);
+      const existingMessages = recentMessages.map(m => ({ role: m.role, content: m.content }));
+
+      const agentCtx: AgentContext = {
+        workspaceId: event.workspaceId,
+        triggeredByUserId: session.userId || 'system',
+        userRole: 'user',
+        autonomyLevel: 1,
+        sessionId: event.sessionId,
+        agentProfile: {
+          id: profile.id,
+          name: profile.name,
+          systemPrompt: profile.systemPrompt,
+          modelProvider: (profile.modelProvider || 'openai') as any,
+          modelName: profile.modelName || 'gpt-4o',
+          modelConfig: profile.modelConfig ?? {},
+          enabledTools: profile.enabledTools ?? [],
+          role: profile.role ?? 'orchestrator',
+        },
+      };
+
+      this.agentLoopService.run(agentCtx, 'The user approved the pending action. Please continue where you left off.', (chunk) => {
+        if (chunk.type === 'token') {
+          this.emitChat(event.workspaceId, event.sessionId!, { type: 'assistant_delta', content: chunk.content ?? '', runId: event.sessionId });
+        } else if (chunk.type === 'tool_call_start') {
+          this.emitChat(event.workspaceId, event.sessionId!, { type: 'status', status: 'running', content: `Using tool: ${chunk.toolName}`, runId: event.sessionId });
+        } else if (chunk.type === 'tool_result') {
+          this.emitChat(event.workspaceId, event.sessionId!, { type: 'status', status: 'running', content: `Tool result: ${JSON.stringify(chunk.result).slice(0, 200)}`, runId: event.sessionId });
+        } else if (chunk.type === 'error') {
+          this.emitChat(event.workspaceId, event.sessionId!, { type: 'error', content: chunk.error, runId: event.sessionId });
+        }
+      }, existingMessages).then(async (result) => {
+        if (result.success && result.finalOutput) {
+          const assistant = await this.saveChatMessage(event.workspaceId, event.sessionId!, 'assistant', result.finalOutput, 'completed', {
+            runId: event.sessionId,
+            source: 'native_saas',
+            resumedAfterApproval: event.approvalId,
+          });
+          this.emitChat(event.workspaceId, event.sessionId!, { type: 'assistant_final', content: result.finalOutput, runId: event.sessionId, message: this.chatMessageDto(assistant) });
+          await this.chatSessions.update(event.sessionId!, { status: 'active', lastMessageAt: new Date() });
+        } else if ((result as any).interruptedByApprovalId) {
+          const newApprovalId = (result as any).interruptedByApprovalId;
+          const newPending = await this.saveChatMessage(event.workspaceId, event.sessionId!, 'system', result.error || 'Waiting for user approval...', 'pending', {
+            runId: event.sessionId,
+            approvalId: newApprovalId,
+            source: 'native_saas',
+          });
+          this.emitChat(event.workspaceId, event.sessionId!, { type: 'status', status: 'pending', content: result.error || 'Waiting for user approval...', runId: event.sessionId, approvalId: newApprovalId, message: this.chatMessageDto(newPending) });
+        } else {
+          const errMsg = result.error || 'Agent loop failed after approval resume';
+          const sys = await this.saveChatMessage(event.workspaceId, event.sessionId!, 'system', errMsg, 'error', { runId: event.sessionId, source: 'native_saas' });
+          this.emitChat(event.workspaceId, event.sessionId!, { type: 'error', content: errMsg, runId: event.sessionId, message: this.chatMessageDto(sys) });
+        }
+      });
+    } else if (event.outcome === 'reject') {
+      await this.chatMessages.update(pendingMsg.id, { status: 'error' as any });
+      const rejectMsg = await this.saveChatMessage(event.workspaceId, event.sessionId, 'assistant', 'The user rejected the pending action.', 'completed', {
+        runId: event.sessionId,
+        source: 'native_saas',
+        rejectedApprovalId: event.approvalId,
+      });
+      this.emitChat(event.workspaceId, event.sessionId, {
+        type: 'assistant_final',
+        content: 'The user rejected the pending action.',
+        runId: event.sessionId,
+        message: this.chatMessageDto(rejectMsg),
+      });
+      await this.chatSessions.update(event.sessionId, { status: 'active', lastMessageAt: new Date() });
+    }
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { Approval, ApprovalStatus } from '../../database/entities/approval.entity';
 import { ApprovalDecision, DecisionOutcome } from '../../database/entities/approval-decision.entity';
@@ -14,6 +15,7 @@ export class ApprovalsService {
     @InjectRepository(ApprovalDecision) private readonly decisionRepo: Repository<ApprovalDecision>,
     @InjectRepository(SocialPostDraft) private readonly socialPostDrafts: Repository<SocialPostDraft>,
     @InjectRepository(Task) private readonly tasks: Repository<Task>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async create(workspaceId: string, dto: CreateApprovalDto): Promise<ApprovalResponseDto> {
@@ -66,6 +68,16 @@ export class ApprovalsService {
     }
     await this.repo.update(approvalId, update);
     await this.applyDecisionSideEffects(approval, dto, newStatus);
+
+    this.eventEmitter.emit('approval.decided', {
+      approvalId,
+      workspaceId: approval.workspaceId,
+      status: newStatus,
+      outcome: dto.outcome,
+      sessionId: approval.metadata?.sessionId,
+      agentProfileId: approval.metadata?.agentProfileId,
+    });
+
     return this.findOne(approvalId);
   }
 

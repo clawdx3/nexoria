@@ -13,9 +13,11 @@ import { AgentLoopService } from './loop/agent-loop.service';
 import { AgentRuntimeGateway } from './gateway/agent-runtime.gateway';
 import { ProAgentRunnerController } from './gateway/pro-agent-runner.controller';
 
+import { ProAgentHttpGuard } from '../../common/guards/pro-agent-http.guard';
+
 @Module({
   imports: [TypeOrmModule.forFeature([MemoryEntry, RuntimeInstance]), AgentProfilesModule, BrowserModule, MemoryModule],
-  providers: [AgentExecutorService, AgentLoopService, ToolRegistryService, LlmProviderFactory, AgentRuntimeGateway],
+  providers: [AgentExecutorService, AgentLoopService, ToolRegistryService, LlmProviderFactory, AgentRuntimeGateway, ProAgentHttpGuard],
   controllers: [AgentRuntimeController, ProAgentRunnerController],
   exports: [AgentExecutorService, AgentLoopService, ToolRegistryService, LlmProviderFactory, AgentRuntimeGateway],
 })

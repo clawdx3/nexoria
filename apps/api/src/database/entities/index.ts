@@ -24,3 +24,4 @@ export * from './artifact.entity';
 export * from './attachment.entity';
 export * from './workspace-usage.entity';
 export * from './vps-instance.entity';
+export * from './memory-curator-run.entity';

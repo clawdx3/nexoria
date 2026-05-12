@@ -22,8 +22,7 @@ RUN pnpm --filter @nexoria/pro-agent deploy --prod /tmp/pro-agent-out
 
 # production
 FROM base AS runtime
-RUN apk add --no-cache curl ca-certificates python3 py3-pip pandoc poppler-utils ttf-dejavu fontconfig
-RUN pip3 install matplotlib --break-system-packages
+RUN apk add --no-cache curl ca-certificates python3 py3-pip pandoc poppler-utils ttf-dejavu fontconfig py3-matplotlib py3-numpy
 WORKDIR /app
 
 # Copy the self-contained deploy output

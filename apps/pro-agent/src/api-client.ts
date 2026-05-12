@@ -110,10 +110,16 @@ export class WsProAgentApiClient implements ProAgentApiClient {
   }
 
   async heartbeat(instanceKey: string, status: string): Promise<void> {
+    const body = { status, metadata: { agentProfileId: this.config.agentProfileId } };
+    const { privateKey } = require('./keys/keys').loadOrCreateKeys(this.config.localDir);
+    const signature = signMessage(privateKey, JSON.stringify(body));
     const res = await fetch(`${this.config.nexoriaApiUrl}/runner/runtime/instances/${instanceKey}/heartbeat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, metadata: { agentProfileId: this.config.agentProfileId } }),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Pro-Agent-Signature': signature,
+      },
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`heartbeat ${res.status}: ${await res.text()}`);
   }

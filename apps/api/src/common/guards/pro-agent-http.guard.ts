@@ -14,7 +14,7 @@ export class ProAgentHttpGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
     const signatureHeader = req.headers['x-pro-agent-signature'];
-    const instanceKey = req.body?.instanceKey;
+    const instanceKey = req.body?.instanceKey ?? req.params?.instanceKey;
 
     if (!signatureHeader || !instanceKey) {
       throw new UnauthorizedException('Missing signature or instanceKey');
