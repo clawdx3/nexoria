@@ -13,6 +13,84 @@ export const useChatStore = defineStore('chat', () => {
   let socket: Socket | null = null
   let pendingSend: { content: string; agentProfileId: string; attachmentIds?: string[] } | null = null
 
+  // ───── Threads ─────
+  interface Thread {
+    id: string
+    title: string | null
+    lastMessageAt: string | null
+    status: string
+    createdAt: string
+  }
+
+  const threads = ref<Thread[]>([])
+  const threadsLoading = ref(false)
+
+  async function loadThreads (): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+    threadsLoading.value = true
+    try {
+      const sessions = await useApi<any[]>(`/workspaces/${workspaceId}/runtime/chat/sessions`)
+      threads.value = (sessions || []).map(s => ({
+        id: s.id,
+        title: s.title || null,
+        lastMessageAt: s.lastMessageAt,
+        status: s.status,
+        createdAt: s.createdAt,
+      }))
+    } catch {
+      threads.value = []
+    } finally {
+      threadsLoading.value = false
+    }
+  }
+
+  async function createThread (agentProfileId: string = 'orchestrator'): Promise<string> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) throw new Error('No workspace selected')
+
+    const session = await useApi<any>(`/workspaces/${workspaceId}/runtime/chat/sessions`, {
+      method: 'POST',
+      body: { agentProfileId },
+    })
+
+    threads.value.unshift({
+      id: session.id,
+      title: session.title || 'New chat',
+      lastMessageAt: session.lastMessageAt,
+      status: session.status,
+      createdAt: session.createdAt,
+    })
+
+    return session.id
+  }
+
+  async function switchThread (sessionId: string): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+
+    await loadSession(sessionId)
+  }
+
+  async function renameThread (sessionId: string, title: string): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+
+    await useApi(`/workspaces/${workspaceId}/runtime/chat/sessions/${sessionId}`, {
+      method: 'PATCH',
+      body: { title },
+    })
+
+    const t = threads.value.find(x => x.id === sessionId)
+    if (t) t.title = title
+  }
+
+  async function autoTitleThread (sessionId: string, content: string): Promise<void> {
+    const title = content.slice(0, 40).trim()
+    if (!title || title.length < 3) return
+    await renameThread(sessionId, title || 'New chat')
+  }
+
   // ───── WebSocket lifecycle ─────
 
   function connectSocket (wsId?: string): Socket | null {
@@ -70,7 +148,7 @@ export const useChatStore = defineStore('chat', () => {
       isLoading.value = false
       if (payload.message) {
         const last = messages.value[messages.value.length - 1]
-        if (last && last.role === 'assistant') {
+        if (last && last.role === 'assistant' && last.id === currentSessionId.value) {
           last.content = payload.message.content
           last.id = payload.message.id
         } else {
@@ -173,8 +251,16 @@ export const useChatStore = defineStore('chat', () => {
     connectSocket(workspaceId)
 
     try {
-      await ensureSession(agentProfileId)
+      if (!currentSessionId.value) {
+        currentSessionId.value = await createThread(agentProfileId)
+      }
       emitChatSend(content, agentProfileId, attachmentIds)
+
+      // Auto-title from first user message
+      const t = threads.value.find(x => x.id === currentSessionId.value)
+      if (t && (!t.title || t.title === 'New chat')) {
+        await autoTitleThread(currentSessionId.value, content)
+      }
     } catch (e: any) {
       isLoading.value = false
       error.value = e.message || 'Failed to create session'
@@ -281,11 +367,18 @@ export const useChatStore = defineStore('chat', () => {
     disconnectSocket()
     messages.value = []
     seenActionCards.value = new Set()
-    currentSessionId.value = null
     runtimeMode.value = 'native_saas'
   }
 
-  async function loadSession (sessionId: string): Promise<void> {
+  async function startNewThread (agentProfileId: string = 'orchestrator'): Promise<void> {
+    disconnectSocket()
+    messages.value = []
+    seenActionCards.value = new Set()
+    runtimeMode.value = 'native_saas'
+    currentSessionId.value = await createThread(agentProfileId)
+  }
+
+  async function loadSession (sessionId: string, opts?: { updateThreadState?: boolean }): Promise<void> {
     const workspaceId = await useWorkspaceStore().ensureWorkspace()
     if (!workspaceId) return
 
@@ -293,21 +386,21 @@ export const useChatStore = defineStore('chat', () => {
       const msgs = await useApi<any[]>(`/workspaces/${workspaceId}/runtime/chat/sessions/${sessionId}/messages`)
       messages.value = (msgs || []).map(m => toChatMessage(m))
       currentSessionId.value = sessionId
+      isLoading.value = false
+
+      if (opts?.updateThreadState !== false) {
+        const t = threads.value.find(x => x.id === sessionId)
+        if (t) t.status = 'active'
+      }
     } catch {
       messages.value = []
+      isLoading.value = false
     }
   }
 
   async function listSessions (): Promise<any[]> {
-    const workspaceId = await useWorkspaceStore().ensureWorkspace()
-    if (!workspaceId) return []
-
-    try {
-      const sessions = await useApi<any[]>(`/workspaces/${workspaceId}/runtime/chat/sessions`)
-      return sessions || []
-    } catch {
-      return []
-    }
+    await loadThreads()
+    return threads.value
   }
 
   function addSystemMessage (content: string): void {
@@ -325,12 +418,20 @@ export const useChatStore = defineStore('chat', () => {
     error,
     currentSessionId,
     runtimeMode,
+    threads,
+    threadsLoading,
     sendMessage,
     clearMessages,
+    startNewThread,
     addSystemMessage,
     loadSession,
     listSessions,
     connectSocket,
     disconnectSocket,
+    loadThreads,
+    createThread,
+    switchThread,
+    renameThread,
+    autoTitleThread,
   }
 })

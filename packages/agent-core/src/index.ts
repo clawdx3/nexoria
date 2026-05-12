@@ -6,3 +6,4 @@ export * from './context-engine';
 export * from './file-store';
 export * from './security/patterns';
 export * from './loop';
+export * from './tool-manifest';

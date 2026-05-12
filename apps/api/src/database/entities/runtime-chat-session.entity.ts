@@ -42,6 +42,9 @@ export class RuntimeChatSession {
   @Column({ type: 'enum', enum: ['pending', 'active', 'closed', 'error'], default: 'pending' })
   status: RuntimeChatSessionStatus;
 
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  title: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any> | null;
 

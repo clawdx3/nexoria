@@ -145,7 +145,7 @@ export class AgentRuntimeGateway implements OnGatewayConnection, OnGatewayDiscon
           const ok = nacl.sign.detached.verify(message, signature, pubKey);
           if (!ok) throw new UnauthorizedException('Invalid Ed25519 signature');
 
-          const workspaceId = payload.workspaceId || instance.workspaceId || undefined;
+          const workspaceId = instance.workspaceId || payload.workspaceId || undefined;
           client.data.instanceKey = payload.instanceKey;
           client.data.isProAgent = true;
           client.data.workspaceId = workspaceId;

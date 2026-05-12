@@ -2,10 +2,11 @@ import { Config } from './config';
 import { WsProAgentApiClient } from './api-client';
 import { ProAgentLoop } from './loop';
 import { resolveLlmAdapter } from './llm';
-import { registerDangerousTools, registerDelegationTool, registerMemoryTools } from './tools';
+import { registerDangerousTools, registerDelegationTool, registerMemoryTools, registerWorkspaceTools } from './tools';
 import { SubagentSpawner } from './subagents';
 import { loadOrCreateKeys, signMessage, getPublicKeyBase64 } from './keys/keys';
 import { NexoriaMemoryProvider } from './memory';
+import { TOOL_MANIFEST } from '@nexoria/agent-core';
 import * as http from 'node:http';
 import * as nacl from 'tweetnacl';
 
@@ -35,6 +36,7 @@ const memoryProvider = new NexoriaMemoryProvider(config.nexoriaApiUrl, config.ag
 const agent = new ProAgentLoop(config, llm, memoryProvider);
 registerDangerousTools(agent, config);
 registerMemoryTools(agent, config);
+registerWorkspaceTools(agent, config, api);
 
 const spawner = new SubagentSpawner(llm, agent.registry, memoryProvider);
 registerDelegationTool(agent, config, spawner, api);
@@ -134,6 +136,9 @@ async function runJob(job: any) {
     'Always use `search_memory` before answering questions about the user or workspace history.',
     'After learning something important about the user, use `nudge_memory` to persist it for future conversations.',
     'When multiple tools are needed, you can call them in parallel by outputting multiple JSON blocks.',
+    'Use `create_task` and `update_task` to track work items. Use `create_approval` for decisions that need human confirmation.',
+    'Use `delegate_to_specialist` when the request clearly matches a specialist area (social_media, email_outreach, researcher, content_creator, code_reviewer).',
+    'Always be concise, action-oriented, and use tools instead of just talking about doing things.',
   ].join(' ');
 
   const profile: any = {

@@ -41,7 +41,7 @@ export class ToolRegistryService {
   private registerBuiltIns(): void {
     // ───── Tasks ─────
     this.register({
-      name: 'delegate_task',
+      name: 'create_task',
       description: 'Create an internal task in the workspace.',
       schema: z.object({
         title: z.string(),
@@ -56,7 +56,7 @@ export class ToolRegistryService {
           description: args.description,
           priority: args.priority ?? 'medium',
           metadata: {
-            createdByTool: 'delegate_task',
+            createdByTool: 'create_task',
             agentProfileId: ctx.agentProfile.id,
           },
         });
@@ -267,6 +267,37 @@ export class ToolRegistryService {
             return { success: false, error: 'No search results found' };
           }
           return { success: true, results };
+        } catch (err: any) {
+          return { success: false, error: err.message };
+        }
+      },
+    });
+
+    this.register({
+      name: 'web_fetch',
+      description: 'Fetch a URL and return the content. Useful for reading web pages, APIs, or documentation.',
+      schema: z.object({
+        url: z.string().url().describe('The URL to fetch'),
+        format: z.enum(['text', 'json']).optional().describe('Response format (default: text)'),
+        maxChars: z.number().optional().describe('Max characters to return (default: 10000)'),
+      }),
+      riskLevel: 2,
+      execute: async (args) => {
+        const maxChars = args.maxChars || 10000;
+        try {
+          const res = await fetch(args.url, {
+            headers: { 'User-Agent': 'Nexoria-Agent/1.0' },
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!res.ok) return { success: false, error: `HTTP ${res.status}: ${res.statusText}` };
+
+          if (args.format === 'json') {
+            const data = await res.json();
+            return { success: true, data };
+          }
+
+          const text = await res.text();
+          return { success: true, content: text.length > maxChars ? text.slice(0, maxChars) + `\n... [truncated, ${text.length} chars total]` : text, url: args.url };
         } catch (err: any) {
           return { success: false, error: err.message };
         }

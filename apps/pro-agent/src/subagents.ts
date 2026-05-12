@@ -106,7 +106,7 @@ export class SubagentSpawner {
     return result;
   }
 
-  async spawn(specialistId: string, prompt: string, workspaceId: string): Promise<{ success: boolean; output: string | null; error?: string; specialistName: string }> {
+  async spawn(specialistId: string, prompt: string, workspaceId: string, parentProfile?: AgentProfile): Promise<{ success: boolean; output: string | null; error?: string; specialistName: string }> {
     const specialist = this.getSpecialist(specialistId);
     if (!specialist) {
       return { success: false, output: null, error: `Unknown specialist: ${specialistId}. Available: ${this.listSpecialists().map(s => s.id).join(', ')}`, specialistName: specialistId };
@@ -127,9 +127,9 @@ export class SubagentSpawner {
       id: specialist.id,
       name: specialist.name,
       systemPrompt: specialist.systemPrompt,
-      modelProvider: 'ollama',
-      modelName: '',
-      modelConfig: {},
+      modelProvider: parentProfile?.modelProvider || 'ollama',
+      modelName: parentProfile?.modelName || 'gpt-4o',
+      modelConfig: parentProfile?.modelConfig || {},
       enabledTools: specialist.enabledTools,
       role: 'specialist',
       defaultAutonomyLevel: 2,

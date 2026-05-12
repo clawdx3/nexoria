@@ -56,7 +56,7 @@ export class ProAgentLoop {
         toolRegistry: this.registry,
         memoryManager: this.memoryManager,
         context: ctx,
-        maxSteps: 10,
+        maxSteps: 30,
         maxTokens: (profile.modelConfig as any)?.maxTokens ?? 2048,
         temperature: (profile.modelConfig as any)?.temperature ?? 0.7,
         emit,

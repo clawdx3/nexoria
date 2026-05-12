@@ -1,5 +1,40 @@
 <template>
-  <div style="display:grid;grid-template-columns:1fr 300px;height:calc(100vh - 56px);overflow:hidden;">
+  <div style="display:grid;grid-template-columns:260px 1fr 300px;height:calc(100vh - 56px);overflow:hidden;">
+
+    <!-- Thread list -->
+    <div style="border-right:1px solid var(--line);background:var(--bg-elev);display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);">
+        <span class="text-tiny" style="font-weight:600;">Threads</span>
+        <button class="nx-icon-btn" title="New thread" @click="startNewThread">
+          <Plus :size="14" />
+        </button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:8px;">
+        <div
+          v-for="t in chatStore.threads"
+          :key="t.id"
+          style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;"
+          :style="{
+            background: t.id === chatStore.currentSessionId ? 'var(--accent-soft)' : 'transparent',
+            color: t.id === chatStore.currentSessionId ? 'var(--accent-soft-ink)' : 'inherit',
+          }"
+          @click="switchThread(t.id)"
+        >
+          <MessageSquare :size="14" style="flex-shrink:0;opacity:0.6;" />
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              {{ t.title || 'New chat' }}
+            </div>
+            <div style="font-size:11px;opacity:0.5;margin-top:1px;">
+              {{ t.lastMessageAt ? formatRelative(t.lastMessageAt) : 'No messages' }}
+            </div>
+          </div>
+        </div>
+        <div v-if="chatStore.threads.length === 0" style="padding:24px 10px;text-align:center;font-size:12px;color:var(--muted);">
+          No threads yet. Start a new one.
+        </div>
+      </div>
+    </div>
 
     <!-- Chat area -->
     <div style="display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;">
@@ -190,7 +225,7 @@
 </template>
 
 <script setup lang="ts">
-import { Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield, Check, X, Eye, Zap } from 'lucide-vue-next'
+import { Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield, Check, X, Eye, Zap, Plus, MessageSquare } from 'lucide-vue-next'
 import { File as FileIcon } from 'lucide-vue-next'
 
 definePageMeta({ middleware: 'auth' })
@@ -200,9 +235,12 @@ const chatStore = useChatStore()
 
 onMounted(async () => {
   await fetchAgents()
+  await chatStore.loadThreads()
   const sessions = await chatStore.listSessions()
   if (sessions.length) {
     await chatStore.loadSession(sessions[0].id)
+  } else {
+    await chatStore.startNewThread(orchestrator.value?.id || 'orchestrator')
   }
 })
 
@@ -235,6 +273,19 @@ function formatSize (bytes?: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function formatRelative (iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMins = Math.round(diffMs / 60000)
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHrs = Math.round(diffMins / 60)
+  if (diffHrs < 24) return `${diffHrs}h ago`
+  const diffDays = Math.round(diffHrs / 24)
+  return `${diffDays}d ago`
+}
+
 function sendPrompt (p: string) {
   message.value = p
   sendMessage()
@@ -252,6 +303,15 @@ function onKeydown (e: KeyboardEvent) {
     e.preventDefault()
     sendMessage()
   }
+}
+
+async function startNewThread () {
+  await chatStore.startNewThread(orchestrator.value?.id || 'orchestrator')
+}
+
+async function switchThread (sessionId: string) {
+  if (sessionId === chatStore.currentSessionId) return
+  await chatStore.switchThread(sessionId)
 }
 
 watch(() => chatStore.messages.length, async () => {

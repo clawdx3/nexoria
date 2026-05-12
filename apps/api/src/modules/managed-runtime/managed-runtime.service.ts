@@ -23,6 +23,7 @@ import {
   HeartbeatRuntimeInstanceDto,
   RegisterRuntimeInstanceDto,
   SendRuntimeChatMessageDto,
+  UpdateChatSessionTitleDto,
   UploadArtifactDto,
 } from './dto/managed-runtime.dto';
 import { MemoryContextBuilder } from '../agent-runtime/memory-context/memory-context.builder';
@@ -149,6 +150,15 @@ export class ManagedRuntimeService {
     const session = await this.chatSessions.findOne({ where: { id: sessionId, workspaceId } });
     if (!session) throw new NotFoundException('Runtime chat session not found');
     return this.chatSessionDto(session);
+  }
+
+  async updateChatSessionTitle(workspaceId: string, sessionId: string, dto: UpdateChatSessionTitleDto): Promise<any> {
+    const session = await this.chatSessions.findOne({ where: { id: sessionId, workspaceId } });
+    if (!session) throw new NotFoundException('Runtime chat session not found');
+    if (dto.title !== undefined) {
+      await this.chatSessions.update(sessionId, { title: dto.title || null });
+    }
+    return this.chatSessionDto(await this.chatSessions.findOneOrFail({ where: { id: sessionId } }));
   }
 
   async listChatMessages(workspaceId: string, sessionId: string): Promise<any[]> {
@@ -813,6 +823,7 @@ export class ManagedRuntimeService {
       agentProfileId: session.agentProfileId,
       instanceId: session.instanceId,
       status: session.status,
+      title: session.title ?? null,
       metadata: session.metadata ?? {},
       lastMessageAt: session.lastMessageAt,
       createdAt: session.createdAt,

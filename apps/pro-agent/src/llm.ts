@@ -34,13 +34,30 @@ export function resolveLlmAdapter(profile: AgentProfile) {
     messages: Array<{ role: string; content: string }>,
     options?: { maxTokens?: number; temperature?: number },
   ) => {
-    const result = await generateText({
-      model,
-      system,
-      messages: messages.map((m) => ({ role: m.role as any, content: m.content })),
-      maxTokens: options?.maxTokens ?? 2048,
-      temperature: options?.temperature ?? 0.7,
-    });
-    return { text: result.text, usage: { totalTokens: result.usage?.totalTokens ?? 0 } };
+    const MAX_RETRIES = 3;
+    let lastErr: any;
+    for (let i = 0; i < MAX_RETRIES; i++) {
+      try {
+        const result = await generateText({
+          model,
+          system,
+          messages: messages.map((m) => ({ role: m.role as any, content: m.content })),
+          maxTokens: options?.maxTokens ?? 2048,
+          temperature: options?.temperature ?? 0.7,
+        });
+        return { text: result.text, usage: { totalTokens: result.usage?.totalTokens ?? 0 } };
+      } catch (err: any) {
+        lastErr = err;
+        const status = err?.statusCode || err?.response?.statusCode || err?.status;
+        if (status === 429 || status === 503 || err?.message?.toLowerCase().includes('service unavailable')) {
+          const wait = Math.min(1000 * (2 ** i), 8000);
+          console.warn(`[llm] Retry ${i + 1}/${MAX_RETRIES} after ${wait}ms due to ${err.message || status}`);
+          await new Promise((r) => setTimeout(r, wait));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastErr;
   };
 }

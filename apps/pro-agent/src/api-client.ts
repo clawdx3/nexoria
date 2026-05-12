@@ -16,6 +16,12 @@ export interface ProAgentApiClient {
   emitChatFinal(sessionId: string, jobId: string, content: string): void;
   emitJobComplete(instanceKey: string, jobId: string, data: { status: string; result?: Record<string, any>; error?: string }): void;
   emitJobEvent(instanceKey: string, jobId: string, data: any): void;
+  // Workspace APIs
+  createTask(title: string, description: string, metadata?: Record<string, any>): Promise<any>;
+  updateTask(taskId: string, patch: Record<string, any>): Promise<any>;
+  listTasks(status?: string): Promise<any[]>;
+  createApproval(title: string, description: string, metadata?: Record<string, any>): Promise<any>;
+  listApprovals(status?: string): Promise<any[]>;
 }
 
 export class WsProAgentApiClient implements ProAgentApiClient {
@@ -57,7 +63,6 @@ export class WsProAgentApiClient implements ProAgentApiClient {
         reject(err);
       });
 
-      // Resolve once first message arrives or on a short timeout
       setTimeout(resolve, 500);
     });
   }
@@ -163,6 +168,8 @@ export class WsProAgentApiClient implements ProAgentApiClient {
     this.socket.emit('job.event', { jobId, ...data });
   }
 
+  // ─── Workspace Task APIs ───
+
   async createTask(title: string, description: string, metadata?: Record<string, any>): Promise<any> {
     if (this.socket?.connected) {
       return new Promise((resolve, reject) => {
@@ -172,15 +179,7 @@ export class WsProAgentApiClient implements ProAgentApiClient {
         });
       });
     }
-    const res = await fetch(`${this.config.nexoriaApiUrl}/workspaces/${this.config.workspaceId}/tasks`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.config.agentToken}`,
-      },
-      body: JSON.stringify({ title, description, metadata: metadata ?? {} }),
-      signal: AbortSignal.timeout(10000),
-    });
+    const res = await this._apiFetch('POST', `/workspaces/${this.config.workspaceId}/tasks`, { title, description, metadata: metadata ?? {} });
     if (!res.ok) throw new Error(`createTask failed: ${res.status}`);
     return res.json();
   }
@@ -194,16 +193,42 @@ export class WsProAgentApiClient implements ProAgentApiClient {
         });
       });
     }
-    const res = await fetch(`${this.config.nexoriaApiUrl}/workspaces/${this.config.workspaceId}/tasks/${taskId}`, {
-      method: 'PATCH',
+    const res = await this._apiFetch('PATCH', `/workspaces/${this.config.workspaceId}/tasks/${taskId}`, patch);
+    if (!res.ok) throw new Error(`updateTask failed: ${res.status}`);
+    return res.json();
+  }
+
+  async listTasks(status?: string): Promise<any[]> {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    const res = await this._apiFetch('GET', `/workspaces/${this.config.workspaceId}/tasks${qs}`);
+    if (!res.ok) throw new Error(`listTasks failed: ${res.status}`);
+    return res.json() as Promise<any[]>;
+  }
+
+  // ─── Workspace Approval APIs ───
+
+  async createApproval(title: string, description: string, metadata?: Record<string, any>): Promise<any> {
+    const res = await this._apiFetch('POST', `/workspaces/${this.config.workspaceId}/approvals`, { title, description, metadata: metadata ?? {} });
+    if (!res.ok) throw new Error(`createApproval failed: ${res.status}`);
+    return res.json();
+  }
+
+  async listApprovals(status?: string): Promise<any[]> {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    const res = await this._apiFetch('GET', `/workspaces/${this.config.workspaceId}/approvals${qs}`);
+    if (!res.ok) throw new Error(`listApprovals failed: ${res.status}`);
+    return res.json() as Promise<any[]>;
+  }
+
+  private async _apiFetch(method: string, path: string, body?: Record<string, any>): Promise<Response> {
+    return fetch(`${this.config.nexoriaApiUrl}${path}`, {
+      method,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.config.agentToken}`,
       },
-      body: JSON.stringify(patch),
+      body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) throw new Error(`updateTask failed: ${res.status}`);
-    return res.json();
   }
 }

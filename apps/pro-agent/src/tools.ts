@@ -495,45 +495,180 @@ print('sent')
   });
 }
 
+export function registerWorkspaceTools(agent: ProAgentLoop, config: Config, api: WsProAgentApiClient): void {
+  // ───── create_task ─────
+  agent.registerTool({
+    name: 'create_task',
+    description: 'Create a tracked task in the workspace with title, description, and optional priority.',
+    schema: z.object({
+      title: z.string().describe('Task title'),
+      description: z.string().optional().describe('Task details'),
+      priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+    }),
+    riskLevel: 2,
+    execute: async (args: { title: string; description?: string; priority?: string }) => {
+      try {
+        const task = await api.createTask(args.title, args.description || '', {
+          priority: args.priority ?? 'medium',
+          createdByTool: 'create_task',
+        });
+        return { success: true, task };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+  });
+
+  // ───── list_tasks ─────
+  agent.registerTool({
+    name: 'list_tasks',
+    description: 'List workspace tasks with optional status filter.',
+    schema: z.object({
+      status: z.enum(['pending', 'in_progress', 'done', 'cancelled']).optional().describe('Filter by status'),
+    }),
+    riskLevel: 1,
+    execute: async (args: { status?: string }) => {
+      try {
+        const tasks = await api.listTasks(args.status);
+        return { success: true, tasks };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+  });
+
+  // ───── update_task ─────
+  agent.registerTool({
+    name: 'update_task',
+    description: 'Update a task status, priority, title, or description.',
+    schema: z.object({
+      taskId: z.string().describe('UUID of the task'),
+      status: z.enum(['pending', 'in_progress', 'done', 'cancelled']).optional(),
+      priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+    }),
+    riskLevel: 2,
+    execute: async (args: { taskId: string; status?: string; priority?: string; title?: string; description?: string }) => {
+      try {
+        const patch: Record<string, any> = {};
+        if (args.status) patch.status = args.status;
+        if (args.priority) patch.priority = args.priority;
+        if (args.title !== undefined) patch.title = args.title;
+        if (args.description !== undefined) patch.description = args.description;
+        const updated = await api.updateTask(args.taskId, patch);
+        return { success: true, task: updated };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+  });
+
+  // ───── create_approval ─────
+  agent.registerTool({
+    name: 'create_approval',
+    description: 'Create an approval request for the user to review.',
+    schema: z.object({
+      title: z.string().describe('Short title'),
+      description: z.string().describe('Detailed explanation'),
+      type: z.enum(['general', 'task', 'social_post', 'budget', 'content']).optional(),
+    }),
+    riskLevel: 2,
+    execute: async (args: { title: string; description: string; type?: string }) => {
+      try {
+        const approval = await api.createApproval(args.title, args.description, {
+          type: args.type ?? 'general',
+          createdByTool: 'create_approval',
+        });
+        return { success: true, approval };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+  });
+
+  // ───── list_approvals ─────
+  agent.registerTool({
+    name: 'list_approvals',
+    description: 'List pending or recent approvals.',
+    schema: z.object({
+      status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
+    }),
+    riskLevel: 1,
+    execute: async (args: { status?: string }) => {
+      try {
+        const approvals = await api.listApprovals(args.status);
+        return { success: true, approvals };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+  });
+}
+
 export function registerDelegationTool(agent: ProAgentLoop, config: Config, spawner: SubagentSpawner, api: WsProAgentApiClient): void {
   agent.registerTool({
     name: 'delegate_to_specialist',
-    description: `Delegate a task to a specialist agent that runs locally. Available specialists: ${spawner.listSpecialists().map(s => `${s.id} (${s.name})`).join(', ')}. The specialist runs its own agent loop with specialized tools and returns the result. A task is automatically created to track the delegation.`,
+    description: `Delegate a task to a specialist agent that runs locally. The specialist runs its own agent loop with specialized tools and returns the result. A task is automatically created to track the delegation. If a taskId is provided, that task will be updated to done/failed instead of creating a separate tracking task.`,
     schema: z.object({
       specialistId: z.string().describe('Specialist ID: social_media, email_outreach, researcher, content_creator, code_reviewer'),
       prompt: z.string().describe('The detailed task/prompt for the specialist'),
+      taskId: z.string().optional().describe('Optional existing task ID to update upon completion'),
     }),
     riskLevel: 1,
-    execute: async (args: { specialistId: string; prompt: string }) => {
+    execute: async (args: { specialistId: string; prompt: string; taskId?: string }) => {
       const specialist = spawner.getSpecialist(args.specialistId);
       const specialistName = specialist?.name ?? args.specialistId;
-      let taskId: string | null = null;
+      let trackingTaskId: string | null = args.taskId ?? null;
 
-      try {
-        const task = await api.createTask(
-          `[${specialistName}] Delegated task`,
-          args.prompt.slice(0, 500),
-          {
-            source: 'pro-agent-delegation',
-            specialistId: args.specialistId,
-            specialistName,
-            createdByTool: 'delegate_to_specialist',
-            delegationStatus: 'in_progress',
-          },
-        );
-        taskId = task.id;
-        console.log(`[subagent] Created task ${taskId} for ${args.specialistId}`);
-      } catch (err: any) {
-        console.error(`[subagent] Failed to create task: ${err.message}`);
+      if (!args.taskId) {
+        try {
+          const task = await api.createTask(
+            `[${specialistName}] Delegated task`,
+            args.prompt.slice(0, 500),
+            {
+              source: 'pro-agent-delegation',
+              specialistId: args.specialistId,
+              specialistName,
+              createdByTool: 'delegate_to_specialist',
+              delegationStatus: 'in_progress',
+            },
+          );
+          trackingTaskId = task.id;
+          console.log(`[subagent] Created task ${trackingTaskId} for ${args.specialistId}`);
+        } catch (err: any) {
+          console.error(`[subagent] Failed to create task: ${err.message}`);
+        }
+      } else {
+        try {
+          await api.updateTask(args.taskId, {
+            status: 'in_progress',
+            metadata: {
+              source: 'pro-agent-delegation',
+              specialistId: args.specialistId,
+              specialistName,
+              delegationStatus: 'started',
+              delegatedAt: new Date().toISOString(),
+            },
+          });
+          console.log(`[subagent] Existing task ${args.taskId} set to in_progress`);
+        } catch (err: any) {
+          console.error(`[subagent] Failed to update task ${args.taskId}: ${err.message}`);
+        }
       }
 
       console.log(`[subagent] Spawning ${args.specialistId}...`);
-      const result = await spawner.spawn(args.specialistId, args.prompt, config.workspaceId);
+      const parentProfile: any = {
+        modelProvider: config.llmProvider,
+        modelName: config.llmModel,
+        modelConfig: { apiKey: config.llmApiKey },
+      };
+      const result = await spawner.spawn(args.specialistId, args.prompt, config.workspaceId, parentProfile);
       console.log(`[subagent] ${args.specialistId} completed: ${result.success ? 'success' : 'failed'}`);
 
-      if (taskId) {
+      if (trackingTaskId) {
         try {
-          await api.updateTask(taskId, {
+          await api.updateTask(trackingTaskId, {
             status: result.success ? 'done' : 'failed',
             description: result.output ? result.output.slice(0, 2000) : result.error || 'No output',
             metadata: {
@@ -544,8 +679,9 @@ export function registerDelegationTool(agent: ProAgentLoop, config: Config, spaw
               completedAt: new Date().toISOString(),
             },
           });
+          console.log(`[subagent] Task ${trackingTaskId} updated to ${result.success ? 'done' : 'failed'}`);
         } catch (err: any) {
-          console.error(`[subagent] Failed to update task: ${err.message}`);
+          console.error(`[subagent] Failed to update task ${trackingTaskId}: ${err.message}`);
         }
       }
 

@@ -191,3 +191,10 @@ export class SendRuntimeChatMessageDto {
   @IsEnum(['native_saas', 'native_pro'])
   runtimeMode?: 'native_saas' | 'native_pro';
 }
+
+export class UpdateChatSessionTitleDto {
+  @ApiPropertyOptional({ example: 'Outreach planning' })
+  @IsOptional()
+  @IsString()
+  title?: string;
+}
