@@ -1,14 +1,14 @@
-import { Controller, Get, Post, Body, Param, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { MemoryService } from './memory.service';
 import { CreateMemoryDto, MemoryResponseDto, SemanticSearchDto } from './dto/create-memory.dto';
 import { EmbeddingService } from '../agent-runtime/embedding/embedding.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ProAgentOrJwtGuard } from '../../common/guards/pro-agent-or-jwt.guard';
 import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-request.interface';
 
 @ApiTags('Memory')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(ProAgentOrJwtGuard)
 @Controller('workspaces/:workspaceId/memory')
 export class MemoryController {
   constructor(
@@ -18,8 +18,23 @@ export class MemoryController {
 
   @Get()
   @ApiResponse({ status: 200, type: [MemoryResponseDto] })
-  findCurrentUserMemories(@Param('workspaceId') wsId: string, @Request() req: AuthenticatedRequest): Promise<MemoryResponseDto[]> {
-    return this.service.findByWorkspaceUser(wsId, req.user.id);
+  findCurrentUserMemories(
+    @Param('workspaceId') wsId: string,
+    @Query('userId') userId: string | undefined,
+    @Query('tier') tier: string | undefined,
+    @Query('sessionId') sessionId: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<MemoryResponseDto[]> {
+    const effectiveUserId = userId ?? req.user.id;
+    const parsedLimit = limit ? parseInt(limit, 10) : undefined;
+    const safeLimit = parsedLimit && !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
+    const opts = {
+      tier,
+      sessionId,
+      limit: safeLimit,
+    };
+    return this.service.findByWorkspaceUser(wsId, effectiveUserId, opts);
   }
 
   @Get('user/:userId')
@@ -36,16 +51,22 @@ export class MemoryController {
 
   @Post()
   @ApiResponse({ status: 201, type: MemoryResponseDto })
-  async create(@Param('workspaceId') wsId: string, @Body() dto: CreateMemoryDto): Promise<MemoryResponseDto> {
+  async create(
+    @Param('workspaceId') wsId: string,
+    @Body() dto: CreateMemoryDto,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<MemoryResponseDto> {
+    const effectiveUserId = dto.userId ?? req.user?.id ?? 'pro-agent';
+    const effectiveDto = { ...dto, userId: effectiveUserId };
     let embedding: number[] | undefined;
-    if (dto.tier === 'long_term' && this.embeddingService.isReady()) {
+    if (effectiveDto.tier === 'long_term' && this.embeddingService.isReady()) {
       try {
-        embedding = await this.embeddingService.embed(dto.content);
+        embedding = await this.embeddingService.embed(effectiveDto.content);
       } catch {
         // silently fall back
       }
     }
-    return this.service.create(wsId, dto, { embedding });
+    return this.service.create(wsId, effectiveDto, { embedding });
   }
 
   @Post(':id/review')

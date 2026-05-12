@@ -89,10 +89,11 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-kimi-k2.6:cloud}
       DEFAULT_MODEL_PROVIDER: ${DEFAULT_MODEL_PROVIDER:-ollama}
-      DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-gpt-oss:120b}
+      DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-kimi-k2.6:cloud}
       NEXORIA_RUNNER_TOKEN: ${NEXORIA_RUNNER_TOKEN:-dev-runner-token-change-me}
+      NEXORIA_PRO_AGENT_TOKEN: ${NEXORIA_PRO_AGENT_TOKEN:-dev-pro-agent-token-change-me}
       NEXORIA_MCP_TOKEN: ${NEXORIA_MCP_TOKEN:-dev-mcp-token-change-me}
       ARTIFACT_STORAGE_DIR: /app/storage/artifacts
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
@@ -150,16 +151,15 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-kimi-k2.6:cloud}
       DEFAULT_MODEL_PROVIDER: ${DEFAULT_MODEL_PROVIDER:-ollama}
-      DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-gpt-oss:120b}
+      DEFAULT_MODEL_NAME: ${DEFAULT_MODEL_NAME:-kimi-k2.6:cloud}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: ["node", "-e", "console.log('Nexoria worker stub idle: BullMQ processors are not wired yet.'); setInterval(() => {}, 2147483647)"]
-    # Replace with a real worker entrypoint when BullMQ processors are wired
 
   migrate:
     build:
@@ -177,7 +177,6 @@ services:
       postgres:
         condition: service_healthy
     command: ["pnpm", "--filter", "api", "typeorm", "migration:run"]
-    # Replace with actual TypeORM CLI command when migrations exist
     profiles: ["migrate"]
 
   camofox:
@@ -196,245 +195,45 @@ services:
     volumes:
       - camofox_profiles:/home/node/.camofox/profiles
       - camofox_traces:/home/node/.camofox/traces
-    networks:
-      - nexoria
-    # No ports exposed to host — only internal from api/worker containers
-    # Add proxy envs here when you have them:
-    # PROXY_STRATEGY: backconnect
-    # PROXY_BACKCONNECT_HOST: gate.provider.com
-    # PROXY_BACKCONNECT_PORT: 7000
-    # PROXY_USERNAME: ${PROXY_USERNAME}
-    # PROXY_PASSWORD: ${PROXY_PASSWORD}
-    # restart: unless-stopped
 
-  openclaw-volume-init:
-    image: alpine:3.19
-    container_name: nexoria_openclaw_volume_init
-    user: "0:0"
-    command: ["sh", "-c", "mkdir -p /workspace /config && chown -R 1000:1000 /workspace /config && chmod -R u=rwX,go=rX /workspace /config"]
-    volumes:
-      - openclaw_workspace:/workspace
-      - openclaw_config:/config
-
-  openclaw-gateway:
-    image: ghcr.io/openclaw/openclaw:latest
-    container_name: nexoria_openclaw_gateway
-    depends_on:
-      openclaw-volume-init:
-        condition: service_completed_successfully
-    environment:
-      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-dev-openclaw-token-change-me}
-      OPENCLAW_GATEWAY_AUTH_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-dev-openclaw-token-change-me}
-      OPENCLAW_SANDBOX: "1"
-      OPENCLAW_HOME: /home/node
-      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b}
-      NEXORIA_API_BASE_URL: ${NEXORIA_API_BASE_URL:-http://api:3000/api/v1}
-      NEXORIA_MCP_TOKEN: ${NEXORIA_MCP_TOKEN:-dev-mcp-token-change-me}
-    command:
-      - sh
-      - -lc
-      - |
-        openclaw onboard --non-interactive --accept-risk --mode local --gateway-auth token --gateway-token "$$OPENCLAW_GATEWAY_TOKEN" --gateway-bind lan --gateway-port 18789 --workspace /home/node/.openclaw/workspace --auth-choice skip --skip-daemon --skip-health --skip-ui || true
-        python3 - <<'PY' >/tmp/nexoria-openclaw-config.json
-        import json
-        import os
-
-        base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/v1").rstrip("/")
-        if base_url.endswith("/v1"):
-            base_url = base_url[:-3].rstrip("/")
-
-        model = os.environ.get("OLLAMA_MODEL", "gpt-oss:120b")
-        nexoria_api_base = os.environ.get("NEXORIA_API_BASE_URL", "http://api:3000/api/v1").rstrip("/")
-        nexoria_mcp_token = os.environ.get("NEXORIA_MCP_TOKEN", "dev-mcp-token-change-me")
-        print(json.dumps({
-            "gateway": {
-                "mode": "local",
-                "http": {
-                    "endpoints": {
-                        "chatCompletions": {
-                            "enabled": True,
-                        },
-                    },
-                },
-            },
-            "mcp": {
-                "servers": {
-                    "nexoria": {
-                        "url": f"{nexoria_api_base}/mcp",
-                        "headers": {
-                            "Authorization": f"Bearer {nexoria_mcp_token}",
-                        },
-                    },
-                },
-            },
-            "models": {
-                "mode": "merge",
-                "providers": {
-                    "ollama": {
-                        "api": "ollama",
-                        "baseUrl": base_url,
-                        "apiKey": {
-                            "source": "env",
-                            "provider": "ollama",
-                            "id": "OLLAMA_API_KEY",
-                        },
-                        "auth": "token",
-                        "models": [
-                            {
-                                "id": model,
-                                "name": model,
-                            },
-                        ],
-                    },
-                },
-            },
-            "secrets": {
-                "providers": {
-                    "ollama": {
-                        "source": "env",
-                        "allowlist": [
-                            "OLLAMA_API_KEY",
-                        ],
-                    },
-                },
-            },
-            "agents": {
-                "defaults": {
-                    "model": f"ollama/{model}",
-                },
-            },
-            "tools": {
-                "deny": ["memory_search"],
-            },
-        }))
-        PY
-        openclaw config patch --file /tmp/nexoria-openclaw-config.json
-        node - <<'JS'
-        // Pre-pair the Nexoria runner: generate its device identity if absent
-        // and add it to devices/paired.json so it does not need manual approval
-        // on first connect. Runs as the gateway user (node, uid 1000); the
-        // runner reads the identity as root, so file mode 0644 is fine here.
-        const fs = require('fs');
-        const path = require('path');
-        const crypto = require('crypto');
-
-        const home = '/home/node/.openclaw';
-        const identityFile = path.join(home, 'nexoria-runner-device.json');
-        const devicesDir = path.join(home, 'devices');
-        const pairedFile = path.join(devicesDir, 'paired.json');
-        const SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
-
-        function rawPublicKey(publicKeyPem) {
-          const spki = crypto.createPublicKey(publicKeyPem).export({ type: 'spki', format: 'der' });
-          return spki.length === SPKI_PREFIX.length + 32 && spki.subarray(0, SPKI_PREFIX.length).equals(SPKI_PREFIX)
-            ? spki.subarray(SPKI_PREFIX.length)
-            : spki;
-        }
-        function b64url(buf) {
-          return buf.toString('base64url');
-        }
-
-        fs.mkdirSync(devicesDir, { recursive: true });
-
-        let identity;
-        try {
-          identity = JSON.parse(fs.readFileSync(identityFile, 'utf8'));
-        } catch (err) {
-          if (err.code === 'EACCES') {
-            console.warn('[pre-pair] cannot read existing identity (permission); leaving as-is. Delete the file to regenerate.');
-            process.exit(0);
-          }
-          if (err.code !== 'ENOENT') throw err;
-          const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
-          const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
-          const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
-          const deviceId = crypto.createHash('sha256').update(rawPublicKey(publicKeyPem)).digest('hex');
-          identity = { version: 1, deviceId, publicKeyPem, privateKeyPem, createdAtMs: Date.now() };
-          fs.writeFileSync(identityFile, JSON.stringify(identity, null, 2) + '\n', { mode: 0o644 });
-          console.log('[pre-pair] generated runner identity deviceId=' + deviceId);
-        }
-
-        let paired = {};
-        try { paired = JSON.parse(fs.readFileSync(pairedFile, 'utf8') || '{}'); } catch (err) {
-          if (err.code !== 'ENOENT') console.warn('[pre-pair] paired.json unreadable, starting fresh:', err.message);
-        }
-
-        if (paired[identity.deviceId]) {
-          console.log('[pre-pair] runner already paired deviceId=' + identity.deviceId);
-        } else {
-          const now = Date.now();
-          const scopes = ['operator.read', 'operator.write'];
-          paired[identity.deviceId] = {
-            deviceId: identity.deviceId,
-            publicKey: b64url(rawPublicKey(identity.publicKeyPem)),
-            displayName: 'Nexoria Runner',
-            platform: 'linux',
-            clientId: 'gateway-client',
-            clientMode: 'backend',
-            role: 'operator',
-            roles: ['operator'],
-            scopes,
-            approvedScopes: scopes,
-            tokens: { operator: { token: b64url(crypto.randomBytes(24)), role: 'operator', scopes, createdAtMs: now } },
-            createdAtMs: now,
-            approvedAtMs: now,
-          };
-          fs.writeFileSync(pairedFile, JSON.stringify(paired, null, 2));
-          console.log('[pre-pair] paired runner deviceId=' + identity.deviceId);
-        }
-        JS
-        exec openclaw gateway run --bind lan --port 18789 --auth token --token "$$OPENCLAW_GATEWAY_TOKEN" --allow-unconfigured
-    expose:
-      - "18789"
-    volumes:
-      - openclaw_config:/home/node/.openclaw
-      - openclaw_workspace:/home/node/.openclaw/workspace
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18789/readyz >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
-  openclaw-runner:
+  pro-agent:
     build:
       context: .
-      dockerfile: apps/openclaw-runner/Dockerfile
-    container_name: nexoria_openclaw_runner
+      dockerfile: apps/pro-agent/Dockerfile
+    container_name: nexoria_pro_agent
     environment:
       NODE_ENV: development
       NEXORIA_API_URL: http://api:3000/api/v1
-      NEXORIA_RUNNER_TOKEN: ${NEXORIA_RUNNER_TOKEN:-dev-runner-token-change-me}
-      NEXORIA_RUNNER_INSTANCE_KEY: ${NEXORIA_RUNNER_INSTANCE_KEY:-local-openclaw-runner}
-      OPENCLAW_GATEWAY_URL: http://openclaw-gateway:18789
-      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-dev-openclaw-token-change-me}
-      OPENCLAW_MODEL: ${OPENCLAW_MODEL:-openclaw}
-      OPENCLAW_CONFIG_DIR: /openclaw-config
-      OPENCLAW_WORKSPACE_DIR: /openclaw-workspace
-      RUNNER_POLL_MS: ${RUNNER_POLL_MS:-2500}
-      RUNNER_HEARTBEAT_MS: ${RUNNER_HEARTBEAT_MS:-15000}
+      NEXORIA_AGENT_TOKEN: ${NEXORIA_PRO_AGENT_TOKEN:-dev-pro-agent-token-change-me}
+      NEXORIA_WORKSPACE_ID: ${NEXORIA_PRO_AGENT_WORKSPACE_ID:-00000000-0000-0000-0000-000000000000}
+      LLM_PROVIDER: ${PRO_AGENT_LLM_PROVIDER:-ollama}
+      LLM_API_KEY: ${PRO_AGENT_LLM_API_KEY:-${OLLAMA_API_KEY}}
+      LLM_MODEL: ${PRO_AGENT_LLM_MODEL:-${OLLAMA_MODEL:-kimi-k2.6:cloud}}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+    volumes:
+      - pro_agent_data:/app/data
     depends_on:
       api:
         condition: service_started
-      openclaw-gateway:
-        condition: service_healthy
-      openclaw-volume-init:
-        condition: service_completed_successfully
-    volumes:
-      - openclaw_config:/openclaw-config
-      - openclaw_workspace:/openclaw-workspace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 networks:
-  nexoria:
-    driver: bridge
+  default:
+    name: nexoria
 
 volumes:
   postgres_data:
   redis_data:
   camofox_profiles:
   camofox_traces:
-  openclaw_config:
-  openclaw_workspace:
   artifact_storage:
   minio_data:
+  pro_agent_data:

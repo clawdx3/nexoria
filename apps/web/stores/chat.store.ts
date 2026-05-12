@@ -1,25 +1,240 @@
 import { defineStore } from 'pinia'
 import type { Approval, ChatActionCard, ChatMessage, Task } from '~/types'
-
-type ChatRuntimeMode = 'nexoria' | 'openclaw'
+import { io, Socket } from 'socket.io-client'
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
-  const openClawSessionId = ref<string | null>(null)
-  const openClawStreamAbort = ref<AbortController | null>(null)
-  const openClawStreamingMessageId = ref<string | null>(null)
   const seenActionCards = ref<Set<string>>(new Set())
   const activeTurnStartedAt = ref<string | null>(null)
-  let actionCardPollTimer: ReturnType<typeof setInterval> | null = null
-  let actionCardPollAttempts = 0
+  const currentSessionId = ref<string | null>(null)
+  const runtimeMode = ref<string>('native_saas')
+  let socket: Socket | null = null
+  let pendingSend: { content: string; agentProfileId: string; attachmentIds?: string[] } | null = null
 
-  async function sendMessage (content: string, agentProfileId: string = 'orchestrator', runtimeMode: ChatRuntimeMode = 'nexoria', files: File[] = []): Promise<void> {
+  // ───── Threads ─────
+  interface Thread {
+    id: string
+    title: string | null
+    lastMessageAt: string | null
+    status: string
+    createdAt: string
+  }
+
+  const threads = ref<Thread[]>([])
+  const threadsLoading = ref(false)
+
+  async function loadThreads (): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+    threadsLoading.value = true
+    try {
+      const sessions = await useApi<any[]>(`/workspaces/${workspaceId}/runtime/chat/sessions`)
+      threads.value = (sessions || []).map(s => ({
+        id: s.id,
+        title: s.title || null,
+        lastMessageAt: s.lastMessageAt,
+        status: s.status,
+        createdAt: s.createdAt,
+      }))
+    } catch {
+      threads.value = []
+    } finally {
+      threadsLoading.value = false
+    }
+  }
+
+  async function createThread (agentProfileId: string = 'orchestrator'): Promise<string> {
     const workspaceId = await useWorkspaceStore().ensureWorkspace()
     if (!workspaceId) throw new Error('No workspace selected')
-    stopActionCardPolling()
+
+    const session = await useApi<any>(`/workspaces/${workspaceId}/runtime/chat/sessions`, {
+      method: 'POST',
+      body: { agentProfileId },
+    })
+
+    threads.value.unshift({
+      id: session.id,
+      title: session.title || 'New chat',
+      lastMessageAt: session.lastMessageAt,
+      status: session.status,
+      createdAt: session.createdAt,
+    })
+
+    return session.id
+  }
+
+  async function switchThread (sessionId: string): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+
+    await loadSession(sessionId)
+  }
+
+  async function renameThread (sessionId: string, title: string): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+
+    await useApi(`/workspaces/${workspaceId}/runtime/chat/sessions/${sessionId}`, {
+      method: 'PATCH',
+      body: { title },
+    })
+
+    const t = threads.value.find(x => x.id === sessionId)
+    if (t) t.title = title
+  }
+
+  async function autoTitleThread (sessionId: string, content: string): Promise<void> {
+    const title = content.slice(0, 40).trim()
+    if (!title || title.length < 3) return
+    await renameThread(sessionId, title || 'New chat')
+  }
+
+  // ───── WebSocket lifecycle ─────
+
+  function connectSocket (wsId?: string): Socket | null {
+    if (socket?.connected) return socket
+    if (socket) {
+      socket.disconnect()
+      socket = null
+    }
+    const token = useCookie('access_token').value
+    const baseUrl = useRuntimeConfig().public.apiBaseUrl as string
+    const wsUrl = baseUrl.replace('/api/v1', '')
+    const workspaceId = wsId || useWorkspaceStore().currentWorkspaceId
+    if (!token) return null
+
+    socket = io(`${wsUrl}/agent-runtime`, {
+      auth: { token: `Bearer ${token}`, workspaceId },
+      transports: ['websocket'],
+    })
+
+    socket.on('connect', () => {
+      console.log('[chat.ws] connected')
+      if (pendingSend) {
+        const p = pendingSend
+        pendingSend = null
+        emitChatSend(p.content, p.agentProfileId, p.attachmentIds)
+      }
+    })
+
+    socket.on('disconnect', (reason) => {
+      console.log('[chat.ws] disconnected', reason)
+    })
+
+    socket.on('chat.user_message', (payload: any) => {
+      // Message already added optimistically in sendMessage — skip the echo
+    })
+
+    socket.on('chat.assistant_delta', (payload: any) => {
+      if (payload.sessionId && payload.sessionId !== currentSessionId.value) return
+      const last = messages.value[messages.value.length - 1]
+      if (last && last.role === 'assistant') {
+        last.content += payload.content
+      } else {
+        messages.value.push({
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: payload.content,
+          agentProfileId: payload.agentProfileId,
+          timestamp: new Date().toISOString()
+        })
+      }
+    })
+
+    socket.on('chat.assistant_final', (payload: any) => {
+      if (payload.sessionId && payload.sessionId !== currentSessionId.value) return
+      isLoading.value = false
+      if (payload.message) {
+        const last = messages.value[messages.value.length - 1]
+        if (last && last.role === 'assistant' && last.id === currentSessionId.value) {
+          last.content = payload.message.content
+          last.id = payload.message.id
+        } else {
+          messages.value.push(toChatMessage(payload.message))
+        }
+      }
+    })
+
+    socket.on('chat.status', (payload: any) => {
+      if (payload.sessionId && payload.sessionId !== currentSessionId.value) return
+      messages.value.push({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: payload.content || payload.status,
+        timestamp: new Date().toISOString()
+      })
+    })
+
+    socket.on('chat.error', (payload: any) => {
+      if (payload.sessionId && payload.sessionId !== currentSessionId.value) return
+      isLoading.value = false
+      messages.value.push({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: `Error: ${payload.content || payload.message || 'Unknown error'}`,
+        timestamp: new Date().toISOString()
+      })
+    })
+
+    socket.on('chat.action_card', (payload: any) => {
+      appendActionCard({
+        type: payload.type,
+        id: payload.id,
+        title: payload.title,
+        description: payload.description,
+        status: payload.status,
+        priority: payload.priority,
+        metadata: payload.metadata,
+      })
+    })
+
+    return socket
+  }
+
+  function disconnectSocket (): void {
+    if (socket) {
+      socket.disconnect()
+      socket = null
+    }
+  }
+
+  function emitChatSend (content: string, agentProfileId: string, attachmentIds?: string[]): void {
+    if (!currentSessionId.value || !socket?.connected) {
+      pendingSend = { content, agentProfileId, attachmentIds }
+      return
+    }
+    socket.emit('chat.send', {
+      sessionId: currentSessionId.value,
+      content,
+      attachmentIds,
+      runtimeMode: runtimeMode.value,
+    })
+  }
+
+  // ───── Actions ─────
+
+  async function ensureSession (agentProfileId: string): Promise<string> {
+    if (currentSessionId.value) return currentSessionId.value
+
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) throw new Error('No workspace selected')
+
+    const session = await useApi<any>(`/workspaces/${workspaceId}/runtime/chat/sessions`, {
+      method: 'POST',
+      body: { agentProfileId },
+    })
+    currentSessionId.value = session.id
+    return session.id
+  }
+
+  async function sendMessage (content: string, agentProfileId: string = 'orchestrator', files: File[] = []): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) throw new Error('No workspace selected')
+
     const uploadedAttachments = files.length ? await useAttachments().uploadFiles(files, { scope: 'chat' }) : []
+    const attachmentIds = uploadedAttachments.map(a => a.id)
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -33,188 +248,32 @@ export const useChatStore = defineStore('chat', () => {
     isLoading.value = true
     error.value = null
 
+    connectSocket(workspaceId)
+
     try {
-      if (runtimeMode === 'openclaw') {
-        await runOpenClawChat(workspaceId, agentProfileId, content, uploadedAttachments.map(attachment => attachment.id))
-      } else {
-        const assistantContent = await runNexoriaChat(workspaceId, agentProfileId, content)
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: assistantContent,
-          agentProfileId,
-          timestamp: new Date().toISOString()
+      if (!currentSessionId.value) {
+        currentSessionId.value = await createThread(agentProfileId)
+      }
+      emitChatSend(content, agentProfileId, attachmentIds)
+
+      // Auto-title from first user message
+      const t = threads.value.find(x => x.id === currentSessionId.value)
+      if (t && (!t.title || t.title === 'New chat')) {
+        await autoTitleThread(currentSessionId.value, content)
+      }
+    } catch (e: any) {
+      isLoading.value = false
+      error.value = e.message || 'Failed to create session'
+    }
+
+    // Fallback: if not connected after 500ms, show error
+    if (!socket?.connected) {
+      setTimeout(() => {
+        if (isLoading.value && !socket?.connected) {
+          error.value = 'Connection lost. Trying to reconnect...'
         }
-        messages.value.push(assistantMsg)
-      }
-      await useTasksStore().fetchTasks(workspaceId)
-      if (runtimeMode !== 'openclaw') {
-        await appendWorkspaceActionCards(workspaceId, userMsg.timestamp)
-        startActionCardPolling(workspaceId, userMsg.timestamp)
-      }
-    } catch (e: any) {
-      error.value = e?.message || 'Failed to get response'
-      messages.value.push({
-        id: crypto.randomUUID(),
-        role: 'system',
-        content: `Error: ${error.value}`,
-        timestamp: new Date().toISOString()
-      })
-    } finally {
-      if (runtimeMode !== 'openclaw') isLoading.value = false
+      }, 500)
     }
-  }
-
-  async function runNexoriaChat (workspaceId: string, agentProfileId: string, content: string): Promise<string> {
-    const res = await useApi<{ message: string; task?: any; status: string }>(
-      `/workspaces/${workspaceId}/agent-runtime/run/${agentProfileId}`,
-      {
-        method: 'POST',
-        body: { message: content }
-      }
-    )
-    return res.message || 'Task dispatched.'
-  }
-
-  async function runOpenClawChat (workspaceId: string, agentProfileId: string, content: string, attachmentIds: string[] = []): Promise<void> {
-    const session = await ensureOpenClawSession(workspaceId, agentProfileId)
-    startOpenClawStream(workspaceId, session.id, agentProfileId)
-    await useApi<any>(`/workspaces/${workspaceId}/runtime/chat/sessions/${session.id}/messages`, {
-      method: 'POST',
-      body: { content, attachmentIds }
-    })
-  }
-
-  async function ensureOpenClawSession (workspaceId: string, agentProfileId: string): Promise<any> {
-    const storageKey = openClawSessionStorageKey(workspaceId, agentProfileId)
-    const savedSessionId = openClawSessionId.value || (process.client ? localStorage.getItem(storageKey) : null)
-    if (savedSessionId) {
-      try {
-        const session = await useApi<any>(`/workspaces/${workspaceId}/runtime/chat/sessions/${savedSessionId}`)
-        openClawSessionId.value = session.id
-        if (messages.value.length === 0) await loadOpenClawMessages(workspaceId, session.id)
-        return session
-      } catch {
-        if (process.client) localStorage.removeItem(storageKey)
-        openClawSessionId.value = null
-      }
-    }
-
-    const session = await useApi<any>(`/workspaces/${workspaceId}/runtime/chat/sessions`, {
-      method: 'POST',
-      body: { agentProfileId }
-    })
-    openClawSessionId.value = session.id
-    if (process.client) localStorage.setItem(storageKey, session.id)
-    return session
-  }
-
-  async function startTaskChatSession (workspaceId: string, taskId: string): Promise<any> {
-    const session = await useApi<any>(`/workspaces/${workspaceId}/tasks/${taskId}/chat/sessions`, {
-      method: 'POST'
-    })
-    openClawSessionId.value = session.id
-    const storageKey = openClawSessionStorageKey(workspaceId, session.agentProfileId || 'orchestrator')
-    if (process.client) localStorage.setItem(storageKey, session.id)
-    return session
-  }
-
-  async function loadOpenClawMessages (workspaceId: string, sessionId: string): Promise<void> {
-    const persisted = await useApi<any[]>(`/workspaces/${workspaceId}/runtime/chat/sessions/${sessionId}/messages`)
-    messages.value = persisted.map(message => toChatMessage(message))
-  }
-
-  function startOpenClawStream (workspaceId: string, sessionId: string, agentProfileId: string): void {
-    if (openClawStreamAbort.value) return
-    const controller = new AbortController()
-    openClawStreamAbort.value = controller
-    void readOpenClawStream(workspaceId, sessionId, agentProfileId, controller)
-  }
-
-  async function readOpenClawStream (workspaceId: string, sessionId: string, agentProfileId: string, controller: AbortController): Promise<void> {
-    try {
-      const response = await useApiStream(`/workspaces/${workspaceId}/runtime/chat/sessions/${sessionId}/events`, {
-        signal: controller.signal,
-        headers: { Accept: 'text/event-stream' }
-      })
-      if (!response.ok || !response.body) throw new Error(`OpenClaw stream failed (${response.status})`)
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      while (!controller.signal.aborted) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const chunks = buffer.split('\n\n')
-        buffer = chunks.pop() || ''
-        for (const chunk of chunks) void handleOpenClawSseChunk(chunk, workspaceId, agentProfileId)
-      }
-    } catch (e: any) {
-      if (!controller.signal.aborted) {
-        error.value = e?.message || 'OpenClaw stream disconnected'
-        addSystemMessage(`Error: ${error.value}`)
-      }
-    } finally {
-      if (openClawStreamAbort.value === controller) openClawStreamAbort.value = null
-    }
-  }
-
-  async function handleOpenClawSseChunk (chunk: string, workspaceId: string, agentProfileId: string): Promise<void> {
-    const dataLine = chunk.split('\n').find(line => line.startsWith('data:'))
-    if (!dataLine) return
-    try {
-      const event = JSON.parse(dataLine.replace(/^data:\s*/, ''))
-      if (event.type === 'assistant_delta') {
-        appendAssistantDelta(event.content || '', agentProfileId)
-      } else if (event.type === 'assistant_final' && event.message) {
-        replaceStreamingAssistant(toChatMessage(event.message, agentProfileId))
-        const turnStartedAt = activeTurnStartedAt.value
-        await appendWorkspaceActionCards(workspaceId, turnStartedAt)
-        await useTasksStore().fetchTasks(workspaceId)
-        startActionCardPolling(workspaceId, turnStartedAt)
-        isLoading.value = false
-        activeTurnStartedAt.value = null
-      } else if (event.type === 'error' && event.message) {
-        messages.value.push(toChatMessage(event.message, agentProfileId))
-        isLoading.value = false
-      } else if (event.type === 'policy_violation' && event.message) {
-        messages.value.push(toChatMessage(event.message, agentProfileId))
-        isLoading.value = false
-      } else if (event.type === 'status' && event.content) {
-        addSystemMessage(event.content)
-      }
-    } catch {
-      // Ignore malformed keepalive or partial SSE chunks.
-    }
-  }
-
-  function appendAssistantDelta (content: string, agentProfileId: string): void {
-    if (!content) return
-    let message = messages.value.find(item => item.id === openClawStreamingMessageId.value)
-    if (!message) {
-      message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: '',
-        agentProfileId,
-        timestamp: new Date().toISOString()
-      }
-      openClawStreamingMessageId.value = message.id
-      messages.value.push(message)
-    }
-    message.content += content
-  }
-
-  function replaceStreamingAssistant (message: ChatMessage): void {
-    const index = openClawStreamingMessageId.value
-      ? messages.value.findIndex(item => item.id === openClawStreamingMessageId.value)
-      : -1
-    if (index >= 0) {
-      messages.value[index] = message
-    } else if (!messages.value.some(item => item.id === message.id)) {
-      messages.value.push(message)
-    }
-    openClawStreamingMessageId.value = null
   }
 
   function toChatMessage (message: any, fallbackAgentProfileId?: string): ChatMessage {
@@ -304,41 +363,44 @@ export const useChatStore = defineStore('chat', () => {
     return true
   }
 
-  function startActionCardPolling (workspaceId: string, sinceIso?: string | null): void {
-    if (!process.client || !sinceIso) return
-    stopActionCardPolling()
-    actionCardPollAttempts = 0
-    actionCardPollTimer = setInterval(() => {
-      actionCardPollAttempts += 1
-      void (async () => {
-        try {
-          const appended = await appendWorkspaceActionCards(workspaceId, sinceIso)
-          await useTasksStore().fetchTasks(workspaceId)
-          if (appended.approvals > 0 || actionCardPollAttempts >= 40) {
-            stopActionCardPolling()
-          }
-        } catch {
-          if (actionCardPollAttempts >= 40) stopActionCardPolling()
-        }
-      })()
-    }, 3000)
-  }
-
-  function stopActionCardPolling (): void {
-    if (actionCardPollTimer) clearInterval(actionCardPollTimer)
-    actionCardPollTimer = null
-    actionCardPollAttempts = 0
-  }
-
-  function openClawSessionStorageKey (workspaceId: string, agentProfileId: string): string {
-    return `nexoria:openclaw-session:${workspaceId}:${agentProfileId}`
-  }
-
   function clearMessages (): void {
-    stopActionCardPolling()
+    disconnectSocket()
     messages.value = []
-    openClawStreamingMessageId.value = null
     seenActionCards.value = new Set()
+    runtimeMode.value = 'native_saas'
+  }
+
+  async function startNewThread (agentProfileId: string = 'orchestrator'): Promise<void> {
+    disconnectSocket()
+    messages.value = []
+    seenActionCards.value = new Set()
+    runtimeMode.value = 'native_saas'
+    currentSessionId.value = await createThread(agentProfileId)
+  }
+
+  async function loadSession (sessionId: string, opts?: { updateThreadState?: boolean }): Promise<void> {
+    const workspaceId = await useWorkspaceStore().ensureWorkspace()
+    if (!workspaceId) return
+
+    try {
+      const msgs = await useApi<any[]>(`/workspaces/${workspaceId}/runtime/chat/sessions/${sessionId}/messages`)
+      messages.value = (msgs || []).map(m => toChatMessage(m))
+      currentSessionId.value = sessionId
+      isLoading.value = false
+
+      if (opts?.updateThreadState !== false) {
+        const t = threads.value.find(x => x.id === sessionId)
+        if (t) t.status = 'active'
+      }
+    } catch {
+      messages.value = []
+      isLoading.value = false
+    }
+  }
+
+  async function listSessions (): Promise<any[]> {
+    await loadThreads()
+    return threads.value
   }
 
   function addSystemMessage (content: string): void {
@@ -354,10 +416,22 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     isLoading,
     error,
-    openClawSessionId,
+    currentSessionId,
+    runtimeMode,
+    threads,
+    threadsLoading,
     sendMessage,
-    startTaskChatSession,
     clearMessages,
-    addSystemMessage
+    startNewThread,
+    addSystemMessage,
+    loadSession,
+    listSessions,
+    connectSocket,
+    disconnectSocket,
+    loadThreads,
+    createThread,
+    switchThread,
+    renameThread,
+    autoTitleThread,
   }
 })

@@ -59,6 +59,12 @@ export class MemoryEntry {
   @Column({ type: 'timestamp', nullable: true })
   lastValidatedAt: Date | null;
 
+  @Column({ type: 'uuid', nullable: true })
+  supersededBy: string | null;
+
+  @Column({ type: 'float', default: 1.0 })
+  qualityScore: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

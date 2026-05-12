@@ -4,10 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
 } from 'typeorm';
-import { Workspace } from './workspace.entity';
 
 export type RuntimeInstanceStatus = 'provisioning' | 'ready' | 'offline' | 'error' | 'paused' | 'destroyed';
 
@@ -21,10 +18,6 @@ export class RuntimeInstance {
 
   @Column({ type: 'uuid', nullable: true })
   workspaceId: string | null;
-
-  @ManyToOne(() => Workspace, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'workspaceId' })
-  workspace: Workspace | null;
 
   @Column({ type: 'enum', enum: ['provisioning', 'ready', 'offline', 'error', 'paused', 'destroyed'], default: 'provisioning' })
   status: RuntimeInstanceStatus;

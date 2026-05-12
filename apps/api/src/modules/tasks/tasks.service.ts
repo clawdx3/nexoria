@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { Observable, Subject } from 'rxjs';
 import { Task, TaskStatus, TaskPriority } from '../../database/entities/task.entity';
@@ -17,6 +18,7 @@ export class TasksService {
     @InjectRepository(Task) private readonly repo: Repository<Task>,
     @InjectRepository(TaskComment) private readonly comments: Repository<TaskComment>,
     private readonly attachments: AttachmentsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async create(workspaceId: string, dto: CreateTaskDto): Promise<TaskResponseDto> {
@@ -113,6 +115,7 @@ export class TasksService {
 
   private emit(workspaceId: string, event: TaskEvent): void {
     this.subjectFor(workspaceId).next(event);
+    this.eventEmitter.emit(`task.${event.type}`, event);
     this.cleanupEventStreams();
   }
 

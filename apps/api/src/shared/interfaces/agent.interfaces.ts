@@ -15,10 +15,18 @@ export interface AgentContext {
     role: string;
   };
   sessionId?: string;
+  scratchpad?: Record<string, any>;
+}
+
+export interface FileStateStore {
+  get(path: string): { path: string; mtime: number; hash: string } | undefined;
+  set(path: string, entry: { path: string; mtime: number; hash: string }): void;
+  has(path: string): boolean;
+  clear(): void;
 }
 
 export interface ToolContext extends AgentContext {
-  // Additional tool-specific context overrides can go here
+  stateStore?: FileStateStore;
 }
 
 export interface AgentTool {
@@ -26,6 +34,7 @@ export interface AgentTool {
   description: string;
   schema: import('zod').ZodSchema<any>;
   riskLevel: number; // 1 = safe, 2 = moderate, 3 = high
+  exclusive?: boolean; // if true, must run alone (e.g. ask_user)
   execute: (args: any, ctx: ToolContext) => Promise<any>;
 }
 
@@ -36,6 +45,7 @@ export interface AgentExecutorResult {
   error?: string;
   tokensUsed: number;
   durationMs: number;
+  interruptedByApprovalId?: string;
 }
 
 export interface AgentStep {

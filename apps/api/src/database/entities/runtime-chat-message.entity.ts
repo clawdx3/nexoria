@@ -41,9 +41,6 @@ export class RuntimeChatMessage {
   @Column({ type: 'enum', enum: ['pending', 'streaming', 'completed', 'error'], default: 'completed' })
   status: RuntimeChatMessageStatus;
 
-  @Column({ type: 'text', nullable: true })
-  openclawMessageId: string | null;
-
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any> | null;
 

@@ -12,10 +12,9 @@
     "moduleResolution": "node",
     "outDir": "./dist",
     "baseUrl": ".",
-    "paths": {
-      "@nexoria/shared-types": ["./shared/types/src"],
-      "@nexoria/shared-utils": ["./shared/utils/src"]
-    }
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {}
   },
   "exclude": ["node_modules", "dist"]
 }

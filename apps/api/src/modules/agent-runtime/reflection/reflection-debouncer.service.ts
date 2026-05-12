@@ -1,5 +1,6 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ReflectionService } from './reflection.service';
+import { MemoryCuratorService } from '../../memory/memory-curator.service';
 
 const FLUSH_DELAY_MS = Number(process.env.REFLECTION_FLUSH_DELAY_MS || 30_000);
 const SWEEP_INTERVAL_MS = Number(process.env.REFLECTION_SWEEP_INTERVAL_MS || 5 * 60_000);
@@ -25,7 +26,10 @@ export class ReflectionDebouncerService implements OnModuleDestroy {
   private readonly pending = new Map<string, PendingFlush>();
   private sweepHandle: NodeJS.Timeout | null = null;
 
-  constructor(private readonly reflection: ReflectionService) {
+  constructor(
+    private readonly reflection: ReflectionService,
+    @Optional() private readonly curator?: MemoryCuratorService,
+  ) {
     if (SWEEP_INTERVAL_MS > 0) {
       this.sweepHandle = setInterval(() => void this.runSweep(), SWEEP_INTERVAL_MS);
       this.sweepHandle.unref?.();
@@ -48,6 +52,11 @@ export class ReflectionDebouncerService implements OnModuleDestroy {
     this.pending.delete(sessionId);
     try {
       await this.reflection.extractFromTranscript(job.workspaceId, sessionId, job.userId);
+      if (this.curator) {
+        this.curator.maybeRunCurator(job.workspaceId, job.userId).catch((err) => {
+          this.logger.warn(`Curator run failed after flush: ${err.message}`);
+        });
+      }
     } catch (err: any) {
       this.logger.warn(`Reflection flush failed for session ${sessionId}: ${err.message}`);
     }

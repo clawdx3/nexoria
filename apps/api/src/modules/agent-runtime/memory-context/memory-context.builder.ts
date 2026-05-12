@@ -10,6 +10,7 @@ export interface MemoryContextResult {
   session: string[];
   daily: string[];
   longTerm: string[];
+  recalledIds: string[];
 }
 
 @Injectable()
@@ -26,10 +27,22 @@ export class MemoryContextBuilder {
       this.loadTier(ctx, 'daily', 30),
       this.loadLongTerm(ctx, userMessage ?? ''),
     ]);
-    return { profile, session, daily, longTerm };
+    const recalledIds = [
+      ...profile.ids,
+      ...session.ids,
+      ...daily.ids,
+      ...longTerm.ids,
+    ];
+    return {
+      profile: profile.contents,
+      session: session.contents,
+      daily: daily.contents,
+      longTerm: longTerm.contents,
+      recalledIds,
+    };
   }
 
-  private async loadTier(ctx: AgentContext, tier: string, limit: number): Promise<string[]> {
+  private async loadTier(ctx: AgentContext, tier: string, limit: number): Promise<{ contents: string[]; ids: string[] }> {
     const where: any = {
       workspaceId: ctx.workspaceId,
       userId: ctx.triggeredByUserId,
@@ -56,10 +69,13 @@ export class MemoryContextBuilder {
       });
     }
 
-    return entries.map((e) => e.content);
+    return {
+      contents: entries.map((e) => e.content),
+      ids: entries.map((e) => e.id),
+    };
   }
 
-  private async loadLongTerm(ctx: AgentContext, query: string): Promise<string[]> {
+  private async loadLongTerm(ctx: AgentContext, query: string): Promise<{ contents: string[]; ids: string[] }> {
     if (!this.embeddingService.isReady() || !query) {
       const entries = await this.repo.find({
         where: {
@@ -71,7 +87,10 @@ export class MemoryContextBuilder {
         take: 10,
       });
       this.touchValidated(entries.map((e) => e.id));
-      return entries.map((e) => e.content);
+      return {
+        contents: entries.map((e) => e.content),
+        ids: entries.map((e) => e.id),
+      };
     }
 
     try {
@@ -86,7 +105,10 @@ export class MemoryContextBuilder {
         [ctx.workspaceId, vectorLiteral, 10],
       )) as Array<{ id: string; content: string }>;
       this.touchValidated(raw.map((r) => r.id));
-      return raw.map((r) => r.content);
+      return {
+        contents: raw.map((r) => r.content),
+        ids: raw.map((r) => r.id),
+      };
     } catch {
       const entries = await this.repo.find({
         where: {
@@ -98,7 +120,10 @@ export class MemoryContextBuilder {
         take: 10,
       });
       this.touchValidated(entries.map((e) => e.id));
-      return entries.map((e) => e.content);
+      return {
+        contents: entries.map((e) => e.content),
+        ids: entries.map((e) => e.id),
+      };
     }
   }
 
