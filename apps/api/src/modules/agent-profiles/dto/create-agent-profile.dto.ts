@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsObject, IsArray, IsInt, IsEnum, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AgentRole, ModelProvider, RuntimeMode, PlanTier } from '../../../database/entities/agent-profile.entity';
+import { AgentRole, ModelProvider, RuntimeMode, RuntimeProvider, PlanTier } from '../../../database/entities/agent-profile.entity';
 
 export class CreateAgentProfileDto {
   @ApiProperty({ example: 'Social Media Agent' })
@@ -54,6 +54,11 @@ export class CreateAgentProfileDto {
   @IsOptional()
   @IsEnum(['native_saas', 'native_pro'])
   runtimeMode?: RuntimeMode;
+
+  @ApiPropertyOptional({ enum: ['pro-agent', 'hermes'], default: 'pro-agent' })
+  @IsOptional()
+  @IsEnum(['pro-agent', 'hermes'])
+  runtimeProvider?: RuntimeProvider;
 
   @ApiPropertyOptional({ enum: ['economy', 'pro', 'enterprise'], default: 'economy' })
   @IsOptional()
@@ -118,6 +123,11 @@ export class UpdateAgentProfileDto {
   @IsEnum(['native_saas', 'native_pro'])
   runtimeMode?: RuntimeMode;
 
+  @ApiPropertyOptional({ enum: ['pro-agent', 'hermes'] })
+  @IsOptional()
+  @IsEnum(['pro-agent', 'hermes'])
+  runtimeProvider?: RuntimeProvider;
+
   @ApiPropertyOptional({ enum: ['economy', 'pro', 'enterprise'] })
   @IsOptional()
   @IsEnum(['economy', 'pro', 'enterprise'])
@@ -171,6 +181,9 @@ export class AgentProfileResponseDto {
 
   @ApiProperty()
   runtimeMode: string;
+
+  @ApiProperty()
+  runtimeProvider: string;
 
   @ApiProperty()
   planTier: string;

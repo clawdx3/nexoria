@@ -10,8 +10,9 @@ export const useChatStore = defineStore('chat', () => {
   const activeTurnStartedAt = ref<string | null>(null)
   const currentSessionId = ref<string | null>(null)
   const runtimeMode = ref<string>('native_saas')
+  const runtimeProvider = ref<'pro-agent' | 'hermes'>('pro-agent')
   let socket: Socket | null = null
-  let pendingSend: { content: string; agentProfileId: string; attachmentIds?: string[] } | null = null
+  let pendingSend: { content: string; agentProfileId: string; attachmentIds?: string[]; runtimeMode: string; runtimeProvider: 'pro-agent' | 'hermes' } | null = null
 
   // ───── Threads ─────
   interface Thread {
@@ -115,7 +116,7 @@ export const useChatStore = defineStore('chat', () => {
       if (pendingSend) {
         const p = pendingSend
         pendingSend = null
-        emitChatSend(p.content, p.agentProfileId, p.attachmentIds)
+        emitChatSend(p.content, p.agentProfileId, p.attachmentIds, p.runtimeMode, p.runtimeProvider)
       }
     })
 
@@ -129,12 +130,18 @@ export const useChatStore = defineStore('chat', () => {
 
     socket.on('chat.assistant_delta', (payload: any) => {
       if (payload.sessionId && payload.sessionId !== currentSessionId.value) return
+      const streamId = streamMessageId(payload)
+      const existing = messages.value.find(message => message.id === streamId)
+      if (existing) {
+        existing.content += payload.content
+        return
+      }
       const last = messages.value[messages.value.length - 1]
-      if (last && last.role === 'assistant') {
+      if (last && last.role === 'assistant' && last.id === streamId) {
         last.content += payload.content
       } else {
         messages.value.push({
-          id: crypto.randomUUID(),
+          id: streamId,
           role: 'assistant',
           content: payload.content,
           agentProfileId: payload.agentProfileId,
@@ -147,12 +154,23 @@ export const useChatStore = defineStore('chat', () => {
       if (payload.sessionId && payload.sessionId !== currentSessionId.value) return
       isLoading.value = false
       if (payload.message) {
+        const finalMessage = toChatMessage(payload.message)
+        const existingFinalIndex = messages.value.findIndex(message => message.id === finalMessage.id)
+        if (existingFinalIndex >= 0) {
+          messages.value[existingFinalIndex] = finalMessage
+          return
+        }
+        const streamId = streamMessageId(payload)
+        const streamedIndex = messages.value.findIndex(message => message.id === streamId)
+        if (streamedIndex >= 0) {
+          messages.value[streamedIndex] = finalMessage
+          return
+        }
         const last = messages.value[messages.value.length - 1]
-        if (last && last.role === 'assistant' && last.id === currentSessionId.value) {
-          last.content = payload.message.content
-          last.id = payload.message.id
+        if (last && last.role === 'assistant' && isActiveTurnMessage(last)) {
+          messages.value[messages.value.length - 1] = finalMessage
         } else {
-          messages.value.push(toChatMessage(payload.message))
+          messages.value.push(finalMessage)
         }
       }
     })
@@ -200,16 +218,23 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function emitChatSend (content: string, agentProfileId: string, attachmentIds?: string[]): void {
+  function emitChatSend (
+    content: string,
+    agentProfileId: string,
+    attachmentIds?: string[],
+    mode: string = runtimeMode.value,
+    provider: 'pro-agent' | 'hermes' = runtimeProvider.value,
+  ): void {
     if (!currentSessionId.value || !socket?.connected) {
-      pendingSend = { content, agentProfileId, attachmentIds }
+      pendingSend = { content, agentProfileId, attachmentIds, runtimeMode: mode, runtimeProvider: provider }
       return
     }
     socket.emit('chat.send', {
       sessionId: currentSessionId.value,
       content,
       attachmentIds,
-      runtimeMode: runtimeMode.value,
+      runtimeMode: mode,
+      runtimeProvider: provider,
     })
   }
 
@@ -286,6 +311,15 @@ export const useChatStore = defineStore('chat', () => {
       attachments: message.attachments || message.metadata?.attachments || [],
       timestamp: message.createdAt || message.timestamp || new Date().toISOString()
     }
+  }
+
+  function streamMessageId (payload: any): string {
+    return `stream:${payload.jobId || payload.runId || payload.sessionId || currentSessionId.value || 'current'}`
+  }
+
+  function isActiveTurnMessage (message: ChatMessage): boolean {
+    if (!activeTurnStartedAt.value || !message.timestamp) return false
+    return new Date(message.timestamp).getTime() >= new Date(activeTurnStartedAt.value).getTime()
   }
 
   async function appendWorkspaceActionCards (workspaceId: string, sinceIso?: string | null): Promise<{ total: number; approvals: number; tasks: number }> {
@@ -368,6 +402,7 @@ export const useChatStore = defineStore('chat', () => {
     messages.value = []
     seenActionCards.value = new Set()
     runtimeMode.value = 'native_saas'
+    runtimeProvider.value = 'pro-agent'
   }
 
   async function startNewThread (agentProfileId: string = 'orchestrator'): Promise<void> {
@@ -375,6 +410,7 @@ export const useChatStore = defineStore('chat', () => {
     messages.value = []
     seenActionCards.value = new Set()
     runtimeMode.value = 'native_saas'
+    runtimeProvider.value = 'pro-agent'
     currentSessionId.value = await createThread(agentProfileId)
   }
 
@@ -418,6 +454,7 @@ export const useChatStore = defineStore('chat', () => {
     error,
     currentSessionId,
     runtimeMode,
+    runtimeProvider,
     threads,
     threadsLoading,
     sendMessage,

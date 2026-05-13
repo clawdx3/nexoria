@@ -225,6 +225,99 @@ services:
       start_period: 10s
       retries: 3
 
+  hermes-plugin-init:
+    image: nousresearch/hermes-agent:latest
+    container_name: nexoria_hermes_plugin_init
+    profiles: ["hermes"]
+    command:
+      - sh
+      - -lc
+      - >
+        /opt/hermes/.venv/bin/hermes plugins enable nexoria &&
+        python3 -c "from pathlib import Path; import os, re; p = Path('/opt/data/config.yaml'); text = p.read_text() if p.exists() else ''; model = os.environ.get('HERMES_MODEL') or os.environ.get('OLLAMA_MODEL') or 'kimi-k2.6:cloud'; base_url = os.environ.get('OLLAMA_BASE_URL') or 'https://ollama.com/v1'; block = f'model:\n  default: {model}\n  provider: ollama-cloud\n  base_url: {base_url}\n'; text = re.sub(r'^model:\n(?:  .*\n)*', block, text, count=1, flags=re.M) if re.search(r'^model:\n', text, flags=re.M) else block + text; p.write_text(text)"
+    environment:
+      NEXORIA_API_URL: http://api:3000/api/v1
+      NEXORIA_AGENT_TOKEN: ${NEXORIA_PRO_AGENT_TOKEN:-dev-pro-agent-token-change-me}
+      NEXORIA_WORKSPACE_ID: ${NEXORIA_HERMES_WORKSPACE_ID:-00000000-0000-0000-0000-000000000000}
+      HERMES_MODEL: ${HERMES_MODEL:-kimi-k2.6:cloud}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-kimi-k2.6:cloud}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
+    volumes:
+      - hermes_data:/opt/data
+      - ./apps/hermes-plugin/nexoria:/opt/data/plugins/nexoria:ro
+    restart: "no"
+
+  hermes:
+    image: nousresearch/hermes-agent:latest
+    container_name: nexoria_hermes
+    profiles: ["hermes"]
+    command: gateway run
+    environment:
+      NEXORIA_API_URL: http://api:3000/api/v1
+      NEXORIA_AGENT_TOKEN: ${NEXORIA_PRO_AGENT_TOKEN:-dev-pro-agent-token-change-me}
+      NEXORIA_WORKSPACE_ID: ${NEXORIA_HERMES_WORKSPACE_ID:-00000000-0000-0000-0000-000000000000}
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_KEY: ${HERMES_API_KEY:-dev-hermes-api-key}
+      API_SERVER_CORS_ORIGINS: ${HERMES_API_CORS_ORIGINS:-}
+      API_SERVER_MODEL_NAME: ${HERMES_MODEL:-${OLLAMA_MODEL:-kimi-k2.6:cloud}}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-kimi-k2.6:cloud}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      XAI_API_KEY: ${XAI_API_KEY}
+    ports:
+      - "8642:8642"
+    volumes:
+      - hermes_data:/opt/data
+      - ./apps/hermes-plugin/nexoria:/opt/data/plugins/nexoria:ro
+    depends_on:
+      hermes-plugin-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -H \"Authorization: Bearer $$API_SERVER_KEY\" http://localhost:8642/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  hermes-runner:
+    build:
+      context: .
+      dockerfile: apps/hermes-runner/Dockerfile
+    container_name: nexoria_hermes_runner
+    profiles: ["hermes"]
+    environment:
+      NODE_ENV: development
+      NEXORIA_API_URL: http://api:3000/api/v1
+      NEXORIA_WORKSPACE_ID: ${NEXORIA_HERMES_WORKSPACE_ID:-00000000-0000-0000-0000-000000000000}
+      NEXORIA_AGENT_PROFILE_ID: ${NEXORIA_HERMES_AGENT_PROFILE_ID:-}
+      NEXORIA_MCP_URL: http://api:3000/api/v1/mcp
+      NEXORIA_MCP_TOKEN: ${NEXORIA_MCP_TOKEN:-dev-mcp-token-change-me}
+      HERMES_API_URL: ${HERMES_API_URL:-http://hermes:8642}
+      HERMES_API_KEY: ${HERMES_API_KEY:-dev-hermes-api-key}
+      HERMES_MODEL: ${HERMES_MODEL:-${OLLAMA_MODEL:-kimi-k2.6:cloud}}
+      HERMES_RUN_TIMEOUT_MS: ${HERMES_RUN_TIMEOUT_MS:-300000}
+      LOCAL_DIR: /app/data
+    volumes:
+      - hermes_runner_data:/app/data
+    depends_on:
+      api:
+        condition: service_started
+      hermes:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
 networks:
   default:
     name: nexoria
@@ -237,3 +330,5 @@ volumes:
   artifact_storage:
   minio_data:
   pro_agent_data:
+  hermes_data:
+  hermes_runner_data:

@@ -185,7 +185,7 @@ export class AgentRuntimeGateway implements OnGatewayConnection, OnGatewayDiscon
   @SubscribeMessage('chat.send')
   async handleChatSend(
     @ConnectedSocket() client: AuthSocket,
-    @MessageBody() body: { sessionId: string; content: string; attachmentIds?: string[]; runtimeMode?: string },
+    @MessageBody() body: { sessionId: string; content: string; attachmentIds?: string[]; runtimeMode?: string; runtimeProvider?: string },
   ) {
     const userId = client.data.userId;
     const workspaceId = client.data.workspaceId;
@@ -198,6 +198,7 @@ export class AgentRuntimeGateway implements OnGatewayConnection, OnGatewayDiscon
         content: body.content,
         attachmentIds: body.attachmentIds,
         runtimeMode: body.runtimeMode as any,
+        runtimeProvider: body.runtimeProvider as any,
       });
       this.emitToWorkspace(workspaceId, 'chat.user_message', result);
     } catch (e: any) {
@@ -210,7 +211,7 @@ export class AgentRuntimeGateway implements OnGatewayConnection, OnGatewayDiscon
   @SubscribeMessage('job.claim')
   async handleJobClaim(@ConnectedSocket() client: AuthSocket) {
     if (!client.data.isProAgent || !client.data.instanceKey) {
-      client.emit('error', { message: 'Only Pro Agent can claim jobs' });
+      client.emit('error', { message: 'Only runtime instances can claim jobs' });
       return;
     }
     try {
@@ -228,7 +229,7 @@ export class AgentRuntimeGateway implements OnGatewayConnection, OnGatewayDiscon
     body: { jobId: string; status: string; result?: Record<string, any>; error?: string },
   ) {
     if (!client.data.isProAgent || !client.data.instanceKey) {
-      client.emit('error', { message: 'Only Pro Agent can complete jobs' });
+      client.emit('error', { message: 'Only runtime instances can complete jobs' });
       return;
     }
     try {
@@ -259,18 +260,23 @@ export class AgentRuntimeGateway implements OnGatewayConnection, OnGatewayDiscon
   }
 
   @SubscribeMessage('chat.final')
-  handleChatFinal(
+  async handleChatFinal(
     @ConnectedSocket() client: AuthSocket,
     @MessageBody() body: { sessionId: string; jobId: string; content: string },
   ) {
     if (!client.data.isProAgent) return;
     const workspaceId = client.data.workspaceId;
     if (!workspaceId) return;
-    this.emitToWorkspace(workspaceId, 'chat.assistant_final', {
-      sessionId: body.sessionId,
-      content: body.content,
-      jobId: body.jobId,
-    });
+    try {
+      await this.managedRuntime.finalizeNativeProChatJob(
+        client.data.instanceKey!,
+        body.jobId,
+        body.sessionId,
+        body.content,
+      );
+    } catch (e: any) {
+      client.emit('error', { message: e.message || 'Failed to finalize chat message' });
+    }
   }
 
   @SubscribeMessage('job.event')

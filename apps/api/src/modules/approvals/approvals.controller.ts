@@ -2,12 +2,12 @@ import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request } from '@
 import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { ApprovalsService } from './approvals.service';
 import { CreateApprovalDto, SubmitDecisionDto, ApprovalResponseDto } from './dto/create-approval.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ProAgentOrJwtGuard } from '../../common/guards/pro-agent-or-jwt.guard';
 import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-request.interface';
 
 @ApiTags('Approvals')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(ProAgentOrJwtGuard)
 @Controller('workspaces/:workspaceId/approvals')
 export class ApprovalsController {
   constructor(private readonly service: ApprovalsService) {}

@@ -12,6 +12,7 @@ import { Workspace } from './workspace.entity';
 export type ModelProvider = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'custom';
 export type AgentRole = 'orchestrator' | 'specialist';
 export type RuntimeMode = 'native_saas' | 'native_pro';
+export type RuntimeProvider = 'pro-agent' | 'hermes';
 export type PlanTier = 'economy' | 'pro' | 'enterprise';
 
 @Entity('agent_profiles')
@@ -55,6 +56,9 @@ export class AgentProfile {
 
   @Column({ type: 'enum', enum: ['native_saas', 'native_pro'], default: 'native_saas' })
   runtimeMode: 'native_saas' | 'native_pro';
+
+  @Column({ type: 'enum', enum: ['pro-agent', 'hermes'], default: 'pro-agent' })
+  runtimeProvider: RuntimeProvider;
 
   @Column({ type: 'enum', enum: ['economy', 'pro', 'enterprise'], default: 'economy' })
   planTier: 'economy' | 'pro' | 'enterprise';

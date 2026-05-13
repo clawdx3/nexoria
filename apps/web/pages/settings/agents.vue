@@ -415,10 +415,27 @@
             <!-- Pro: model info note -->
             <div v-if="builderForm.runtimeMode === 'native_pro'" style="padding:12px 14px;background:var(--bg-sunk);border-radius:10px;border:1px solid var(--line);">
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                <Server :size="12" style="color:var(--ink);" />
-                <span style="font-size:12px;font-weight:600;color:var(--ink);">Pro runtime</span>
+                <Server v-if="builderForm.runtimeProvider === 'pro-agent'" :size="12" style="color:var(--ink);" />
+                <Bot v-else :size="12" style="color:var(--ink);" />
+                <span style="font-size:12px;font-weight:600;color:var(--ink);">External runtime</span>
               </div>
-              <div style="font-size:12px;color:var(--muted);line-height:1.5;">This agent runs on a dedicated VPS with full system access. The model runs locally on the server for lower latency and data privacy.</div>
+              <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">Choose which external runner should handle this agent by default.</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <button
+                  style="padding:10px;border-radius:8px;text-align:left;cursor:pointer;"
+                  :style="{ border: '1px solid ' + (builderForm.runtimeProvider === 'pro-agent' ? 'var(--accent)' : 'var(--line)'), background: builderForm.runtimeProvider === 'pro-agent' ? 'var(--accent-soft)' : 'var(--bg-elev)' }"
+                  @click="builderForm.runtimeProvider = 'pro-agent'"
+                >
+                  <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;"><Server :size="12" /> Pro Agent</div>
+                </button>
+                <button
+                  style="padding:10px;border-radius:8px;text-align:left;cursor:pointer;"
+                  :style="{ border: '1px solid ' + (builderForm.runtimeProvider === 'hermes' ? 'var(--accent)' : 'var(--line)'), background: builderForm.runtimeProvider === 'hermes' ? 'var(--accent-soft)' : 'var(--bg-elev)' }"
+                  @click="builderForm.runtimeProvider = 'hermes'"
+                >
+                  <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;"><Bot :size="12" /> Hermes</div>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -437,8 +454,9 @@
                       :style="builderForm.runtimeMode === 'native_saas' ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : { background: 'var(--bg-sunk)', color: 'var(--ink)', border: '1px solid var(--line)' }"
                     >
                       <Zap v-if="builderForm.runtimeMode === 'native_saas'" :size="9" />
-                      <Server v-else :size="9" />
-                      {{ builderForm.runtimeMode === 'native_saas' ? 'Lite' : 'Pro' }}
+                      <Server v-if="builderForm.runtimeMode === 'native_pro' && builderForm.runtimeProvider === 'pro-agent'" :size="9" />
+                      <Bot v-else-if="builderForm.runtimeMode === 'native_pro'" :size="9" />
+                      {{ builderForm.runtimeMode === 'native_saas' ? 'Lite' : builderForm.runtimeProvider === 'hermes' ? 'Hermes' : 'Pro' }}
                     </span>
                   </div>
                   <div style="font-size:12px;color:var(--muted);">{{ builderForm.description || 'No description' }}</div>
@@ -490,7 +508,7 @@
 </template>
 
 <script setup lang="ts">
-import { Plus, Globe, Edit, MessageSquare, X, ArrowRight, Check, Zap, Server } from 'lucide-vue-next'
+import { Bot, Plus, Globe, Edit, MessageSquare, X, ArrowRight, Check, Zap, Server } from 'lucide-vue-next'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -562,12 +580,14 @@ const builderForm = reactive({
   model: 'claude-sonnet-4',
   autonomyLevel: 1,
   runtimeMode: 'native_saas' as 'native_saas' | 'native_pro',
+  runtimeProvider: 'pro-agent' as 'pro-agent' | 'hermes',
   planTier: 'economy' as 'economy' | 'pro' | 'enterprise',
   enabledTools: [] as string[],
 })
 
 function selectTier (mode: 'native_saas' | 'native_pro') {
   builderForm.runtimeMode = mode
+  builderForm.runtimeProvider = 'pro-agent'
   builderForm.planTier = mode === 'native_pro' ? 'pro' : 'economy'
   builderForm.enabledTools = []
 }
@@ -608,6 +628,7 @@ function openBuilder (agent: any) {
       model: agent.modelName || agent.model || 'claude-sonnet-4',
       autonomyLevel: agent.defaultAutonomyLevel ?? agent.autonomyLevel ?? 1,
       runtimeMode: agent.runtimeMode || 'native_saas',
+      runtimeProvider: agent.runtimeProvider || 'pro-agent',
       planTier: agent.planTier || 'economy',
       enabledTools: agent.enabledTools || [],
     })
@@ -620,6 +641,7 @@ function openBuilder (agent: any) {
       model: 'claude-sonnet-4',
       autonomyLevel: 1,
       runtimeMode: 'native_saas',
+      runtimeProvider: 'pro-agent',
       planTier: 'economy',
       enabledTools: [],
     })
@@ -638,6 +660,7 @@ async function saveAgent () {
       modelName: builderForm.model,
       defaultAutonomyLevel: builderForm.autonomyLevel,
       runtimeMode: builderForm.runtimeMode,
+      runtimeProvider: builderForm.runtimeProvider,
       planTier: builderForm.planTier,
       enabledTools: builderForm.enabledTools,
       metadata: { color: builderForm.color },

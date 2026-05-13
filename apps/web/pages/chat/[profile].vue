@@ -57,7 +57,7 @@
                 background: chatStore.runtimeMode === 'native_saas' ? 'var(--accent)' : 'transparent',
                 color: chatStore.runtimeMode === 'native_saas' ? 'var(--accent-ink)' : 'var(--muted)',
               }"
-              @click="chatStore.runtimeMode = 'native_saas'"
+              @click="selectRuntime('native_saas')"
             >
               <Zap :size="12" />
               <span>SaaS</span>
@@ -65,13 +65,24 @@
             <button
               style="padding:4px 10px 4px 8px;font-size:12px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .12s;"
               :style="{
-                background: chatStore.runtimeMode === 'native_pro' ? 'var(--accent)' : 'transparent',
-                color: chatStore.runtimeMode === 'native_pro' ? 'var(--accent-ink)' : 'var(--muted)',
+                background: chatStore.runtimeMode === 'native_pro' && chatStore.runtimeProvider === 'pro-agent' ? 'var(--accent)' : 'transparent',
+                color: chatStore.runtimeMode === 'native_pro' && chatStore.runtimeProvider === 'pro-agent' ? 'var(--accent-ink)' : 'var(--muted)',
               }"
-              @click="chatStore.runtimeMode = 'native_pro'"
+              @click="selectRuntime('native_pro', 'pro-agent')"
             >
               <Server :size="12" />
               <span>Pro</span>
+            </button>
+            <button
+              style="padding:4px 10px 4px 8px;font-size:12px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .12s;"
+              :style="{
+                background: chatStore.runtimeMode === 'native_pro' && chatStore.runtimeProvider === 'hermes' ? 'var(--accent)' : 'transparent',
+                color: chatStore.runtimeMode === 'native_pro' && chatStore.runtimeProvider === 'hermes' ? 'var(--accent-ink)' : 'var(--muted)',
+              }"
+              @click="selectRuntime('native_pro', 'hermes')"
+            >
+              <Bot :size="12" />
+              <span>Hermes</span>
             </button>
           </div>
           <button class="nx-icon-btn bordered"><MoreHorizontal :size="15" /></button>
@@ -195,7 +206,7 @@
           </div>
           <div style="display:flex;justify-content:space-between;font-size:12.5px;">
             <span style="color:var(--muted);">Mode</span>
-            <span style="font-weight:500;">{{ chatStore.runtimeMode === 'native_pro' ? 'Pro (VPS)' : 'SaaS (in-process)' }}</span>
+            <span style="font-weight:500;">{{ runtimeLabel }}</span>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:12.5px;">
             <span style="color:var(--muted);">Autonomy</span>
@@ -225,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield, Check, X, Eye, Zap, Plus, MessageSquare } from 'lucide-vue-next'
+import { Bot, Server, MoreHorizontal, Paperclip, Mic, Send, CheckSquare, Shield, Check, X, Eye, Zap, Plus, MessageSquare } from 'lucide-vue-next'
 import { File as FileIcon } from 'lucide-vue-next'
 
 definePageMeta({ middleware: 'auth' })
@@ -245,6 +256,15 @@ onMounted(async () => {
 })
 
 const orchestrator = computed(() => rawAgents.value.find((a: any) => a.role === 'orchestrator') || rawAgents.value[0])
+const runtimeLabel = computed(() => {
+  if (chatStore.runtimeMode === 'native_saas') return 'SaaS (in-process)'
+  return chatStore.runtimeProvider === 'hermes' ? 'Hermes runner' : 'Pro Agent'
+})
+
+function selectRuntime (mode: 'native_saas' | 'native_pro', provider: 'pro-agent' | 'hermes' = 'pro-agent') {
+  chatStore.runtimeMode = mode
+  chatStore.runtimeProvider = provider
+}
 
 const agentColorPalette = ['#C25B3F', '#7C5CC2', '#3F8FC2', '#5C9C6E', '#C29A3F']
 function agentColor (a: any): string {

@@ -3,13 +3,13 @@ import { ApiTags, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { TasksService } from './tasks.service';
 import { CreateTaskCommentDto, CreateTaskDto, UpdateTaskDto, TaskResponseDto } from './dto/create-task.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ProAgentOrJwtGuard } from '../../common/guards/pro-agent-or-jwt.guard';
 import { AuthenticatedRequest } from '../../shared/interfaces/authenticated-request.interface';
 import { ManagedRuntimeService } from '../managed-runtime/managed-runtime.service';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(ProAgentOrJwtGuard)
 @Controller('workspaces/:workspaceId/tasks')
 export class TasksController {
   constructor(private readonly service: TasksService, private readonly runtime: ManagedRuntimeService) {}

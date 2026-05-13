@@ -129,10 +129,15 @@ The `openclaw-gateway` entrypoint pre-pairs the runner's Ed25519 device on first
 - Bearer JWT auth required for most endpoints
 - Workspace-scoped routes: `/api/v1/workspaces/:workspaceId/:resource`
 - Server-sent events: `/api/v1/workspaces/:workspaceId/tasks/events`, `/api/v1/workspaces/:workspaceId/runtime/chat/sessions/:sessionId/events`
-- MCP server (consumed by the OpenClaw gateway, not by end users):
+- MCP server (consumed by external runners such as Pro Agent and Hermes, not by end users):
   - `GET /api/v1/mcp` — opens an SSE channel; emits the `endpoint` event with the messages URL
   - `POST /api/v1/mcp/messages?sessionId=…` — JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`)
   - Auth: `Authorization: Bearer $NEXORIA_MCP_TOKEN` (header may be repeated; both values accepted)
+- Hermes runtime:
+  - `docker compose --profile hermes up -d hermes hermes-runner` starts the official Hermes gateway API plus Nexoria's runner bridge
+  - Hermes API listens on `:8642` and is authenticated with `HERMES_API_KEY`
+  - The `nexoria` Hermes plugin is mounted from `apps/hermes-plugin/nexoria` and enabled by the one-shot `hermes-plugin-init` service
+  - The plugin exposes `nexoria_*` task and memory tools so Hermes can write shared state back to Nexoria instead of local files
 
 ## Testing
 

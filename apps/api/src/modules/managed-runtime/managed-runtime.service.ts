@@ -186,6 +186,7 @@ export class ManagedRuntimeService {
 
     const profile = await this.agentProfiles.findOne(session.agentProfileId);
     const effectiveMode = (dto as any).runtimeMode ?? profile?.runtimeMode ?? 'native_saas';
+    const runtimeProvider = this.resolveRuntimeProvider((dto as any).runtimeProvider ?? (profile as any)?.runtimeProvider);
 
     if (effectiveMode === 'native_saas') {
       const agentCtx: AgentContext = {
@@ -254,14 +255,15 @@ export class ManagedRuntimeService {
     }
 
     if (effectiveMode === 'native_pro') {
-      const readyInstance = await this.findReadyInstance(workspaceId, 'pro-agent');
+      const readyInstance = await this.findReadyInstance(workspaceId, runtimeProvider);
       if (!readyInstance) {
-        const system = await this.saveChatMessage(workspaceId, sessionId, 'system', 'No Pro Agent instance is registered for this workspace. Start the pro-agent container or set the agent runtimeMode to native_saas.', 'error', {});
+        const label = runtimeProvider === 'hermes' ? 'Hermes runner' : 'Pro Agent';
+        const system = await this.saveChatMessage(workspaceId, sessionId, 'system', `No ${label} instance is registered for this workspace. Start the ${runtimeProvider} runner or set the agent runtimeMode to native_saas.`, 'error', {});
         this.emitChat(workspaceId, sessionId, { type: 'error', content: system.content, runId: sessionId, message: this.chatMessageDto(system) });
         return { message: this.chatMessageDto(system), session: this.chatSessionDto(session) };
       }
       this.emitChat(workspaceId, sessionId, { type: 'user_message', message: this.chatMessageDto(message) });
-      this.emitChat(workspaceId, sessionId, { type: 'status', status: 'running', content: 'Routing to Pro Agent...', runId: sessionId });
+      this.emitChat(workspaceId, sessionId, { type: 'status', status: 'running', content: `Routing to ${runtimeProvider === 'hermes' ? 'Hermes runner' : 'Pro Agent'}...`, runId: sessionId });
 
       const job = await this.createJob(workspaceId, userId, {
         agentProfileId: session.agentProfileId,
@@ -274,6 +276,7 @@ export class ManagedRuntimeService {
           attachmentIds,
           recentMessages: await this.recentChatTranscript(workspaceId, sessionId),
           parentChatSessionId: session.id,
+          runtimeProvider,
         },
       }, readyInstance.id);
 
@@ -398,13 +401,18 @@ export class ManagedRuntimeService {
   async claimNextJob(instanceKey: string): Promise<any | null> {
     const instance = await this.instances.findOne({ where: { instanceKey } });
     if (!instance) throw new NotFoundException('Runtime instance not found');
-    const job = await this.jobs.findOne({
-      where: [
-        { status: 'queued', instanceId: instance.id },
-        { status: 'queued' as const, instanceId: IsNull() },
-      ],
+    let job = await this.jobs.findOne({
+      where: { status: 'queued', instanceId: instance.id },
       order: { createdAt: 'ASC' },
     });
+    if (!job) {
+      const candidates = await this.jobs.find({
+        where: { status: 'queued' as const, instanceId: IsNull() },
+        order: { createdAt: 'ASC' },
+        take: 20,
+      });
+      job = candidates.find((candidate) => this.jobMatchesInstanceProvider(candidate, instance)) ?? null;
+    }
     if (!job) return null;
     await this.jobs.update(job.id, {
       status: 'running',
@@ -460,25 +468,7 @@ export class ManagedRuntimeService {
       this.usageTracking.track(workspaceId, { tokensUsed }).catch(() => {});
     }
 
-    if (dto.status === 'completed' && typeof dto.result?.output === 'string' && chatSessionId) {
-      const signedOutput = `[Pro Agent]\n${dto.result.output}`;
-      const assistant = await this.saveChatMessage(workspaceId, chatSessionId, 'assistant', signedOutput, 'completed', {
-        source: 'native_pro',
-        runtimeJobId: jobId,
-      });
-      this.emitChat(workspaceId, chatSessionId, {
-        type: 'assistant_final',
-        content: dto.result.output,
-        runId: jobId,
-        message: this.chatMessageDto(assistant),
-      });
-      await this.chatSessions.update(chatSessionId, { status: 'active', lastMessageAt: new Date() });
-
-      const session = await this.chatSessions.findOne({ where: { id: chatSessionId } });
-      if (session?.userId) {
-        this.reflectionDebouncer.schedule(session.workspaceId, session.id, session.userId);
-      }
-    } else if (dto.error && chatSessionId) {
+    if (dto.error && chatSessionId) {
       const system = await this.saveChatMessage(workspaceId, chatSessionId, 'system', dto.error, 'error', {
         source: 'native_pro',
         runtimeJobId: jobId,
@@ -493,6 +483,45 @@ export class ManagedRuntimeService {
     }
 
     return this.jobDto(await this.jobs.findOneOrFail({ where: { id: jobId } }));
+  }
+
+  async finalizeNativeProChatJob(
+    instanceKey: string,
+    jobId: string,
+    sessionId: string,
+    content: string,
+  ): Promise<any> {
+    const { instance, job } = await this.runnerJobContext(instanceKey, jobId);
+    if (job.type !== 'native_pro_chat') {
+      throw new BadRequestException('Job type mismatch: expected native_pro_chat');
+    }
+
+    const chatSessionId = job.input?.chatSessionId as string | undefined;
+    if (!chatSessionId || chatSessionId !== sessionId) {
+      throw new BadRequestException('Chat session mismatch for runtime job');
+    }
+
+    const existing = await this.findChatMessageForJob(job.workspaceId, sessionId, jobId);
+    const assistant = existing ?? await this.saveChatMessage(job.workspaceId, sessionId, 'assistant', content, 'completed', {
+      source: instance.mode === 'hermes' ? 'hermes' : 'native_pro',
+      runtimeJobId: jobId,
+      runtimeInstanceKey: instance.instanceKey,
+    });
+
+    this.emitChat(job.workspaceId, sessionId, {
+      type: 'assistant_final',
+      content: assistant.content,
+      runId: jobId,
+      message: this.chatMessageDto(assistant),
+    });
+    await this.chatSessions.update(sessionId, { status: 'active', lastMessageAt: new Date() });
+
+    const session = await this.chatSessions.findOne({ where: { id: sessionId } });
+    if (session?.userId) {
+      this.reflectionDebouncer.schedule(session.workspaceId, session.id, session.userId);
+    }
+
+    return this.chatMessageDto(assistant);
   }
 
   async completeJob(instanceKey: string, jobId: string, dto: CompleteRuntimeJobDto): Promise<any> {
@@ -616,6 +645,16 @@ export class ManagedRuntimeService {
     });
   }
 
+  private resolveRuntimeProvider(value: unknown): 'pro-agent' | 'hermes' {
+    return value === 'hermes' ? 'hermes' : 'pro-agent';
+  }
+
+  private jobMatchesInstanceProvider(job: RuntimeJob, instance: RuntimeInstance): boolean {
+    const requested = this.resolveRuntimeProvider((job.input as any)?.runtimeProvider);
+    const mode = instance.mode === 'hermes' ? 'hermes' : 'pro-agent';
+    return requested === mode;
+  }
+
   private async runnerJobContext(instanceKey: string, jobId: string): Promise<{ instance: RuntimeInstance; job: RuntimeJob }> {
     const instance = await this.instances.findOne({ where: { instanceKey } });
     if (!instance) throw new NotFoundException('Runtime instance not found');
@@ -682,6 +721,16 @@ export class ManagedRuntimeService {
       status,
       metadata,
     }));
+  }
+
+  private async findChatMessageForJob(workspaceId: string, sessionId: string, jobId: string): Promise<RuntimeChatMessage | null> {
+    return this.chatMessages.createQueryBuilder('message')
+      .where('message.workspaceId = :workspaceId', { workspaceId })
+      .andWhere('message.sessionId = :sessionId', { sessionId })
+      .andWhere('message.role = :role', { role: 'assistant' })
+      .andWhere('message.metadata @> :metadata', { metadata: JSON.stringify({ runtimeJobId: jobId }) })
+      .orderBy('message.createdAt', 'DESC')
+      .getOne();
   }
 
   private async recentChatTranscript(workspaceId: string, sessionId: string): Promise<any[]> {

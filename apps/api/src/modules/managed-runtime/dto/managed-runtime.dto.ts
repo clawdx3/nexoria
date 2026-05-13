@@ -190,6 +190,11 @@ export class SendRuntimeChatMessageDto {
   @IsOptional()
   @IsEnum(['native_saas', 'native_pro'])
   runtimeMode?: 'native_saas' | 'native_pro';
+
+  @ApiPropertyOptional({ enum: ['pro-agent', 'hermes'], description: 'External runner provider when runtimeMode is native_pro' })
+  @IsOptional()
+  @IsEnum(['pro-agent', 'hermes'])
+  runtimeProvider?: 'pro-agent' | 'hermes';
 }
 
 export class UpdateChatSessionTitleDto {

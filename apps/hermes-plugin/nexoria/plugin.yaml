@@ -1,0 +1,19 @@
+name: nexoria
+version: 0.1.0
+description: Nexoria workspace tools and memory bridge for Hermes Agent
+provides_tools:
+  - nexoria_create_task
+  - nexoria_list_tasks
+  - nexoria_update_task
+  - nexoria_create_memory
+  - nexoria_search_memory
+provides_hooks:
+  - post_tool_call
+requires_env:
+  - name: NEXORIA_API_URL
+    description: Nexoria API base URL, for example http://api:3000/api/v1
+  - name: NEXORIA_AGENT_TOKEN
+    description: Bearer token accepted by Nexoria runner-capable API endpoints
+    secret: true
+  - name: NEXORIA_WORKSPACE_ID
+    description: Active Nexoria workspace UUID
